@@ -1,5 +1,5 @@
 import { buildWidgetTree } from "../tree";
-import type { ProjectSnapshot, WidgetNode } from "../types";
+import type { ProjectSnapshot, WidgetNode, WidgetEventBindings } from "../types";
 
 export type LvglWidgetKind = "container" | "label" | "button" | "image";
 
@@ -16,6 +16,7 @@ export interface LvglWidgetIR {
   fillExpression?: string;
   textColorExpression?: string;
   visible: boolean;
+  eventBindings?: WidgetEventBindings;
 }
 
 export interface LvglScreenIR {
@@ -170,6 +171,7 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
             fillExpression,
             textColorExpression,
             visible: child.visible !== false,
+            eventBindings: child.eventBindings,
           });
         }
 

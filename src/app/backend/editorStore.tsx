@@ -1,5 +1,10 @@
 export type {
+  EventBinding,
   WidgetType,
+  WidgetEventType,
+  WidgetActionType,
+  WidgetEventAction,
+  WidgetEventBindings,
   EditableWidgetProperty,
   EditableWidgetPropertyValue,
   WidgetNode,

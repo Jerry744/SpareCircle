@@ -3,7 +3,7 @@ import { TopToolbar } from "./TopToolbar";
 import { ScreensPanel } from "./ScreensPanel";
 import { HierarchyPanel } from "./HierarchyPanel";
 import { WidgetsPanel } from "./WidgetsPanel";
-import { InspectorPanel } from "./InspectorPanel";
+import { RightSidebar } from "./RightSidebar";
 import { CanvasViewport } from "./CanvasViewport";
 import { BottomPanel } from "./BottomPanel";
 import { EditorBackendProvider } from "../backend/editorStore";
@@ -57,7 +57,7 @@ export function IDELayout() {
 
           {/* Right Sidebar - fixed width */}
           <div className="w-[320px] min-w-[320px] max-w-[320px] h-full border-l border-[#1e1e1e]">
-            <InspectorPanel />
+            <RightSidebar />
           </div>
         </div>
       </div>

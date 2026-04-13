@@ -14,6 +14,7 @@ import { editorReducer } from "./reducer";
 import { getActiveScreen } from "./tree";
 import { generateLvglZip } from "./codegen/generator";
 import type {
+  EventBinding,
   EditableWidgetProperty,
   EditableWidgetPropertyValue,
   EditorBackendValue,
@@ -21,6 +22,7 @@ import type {
   HydrateProjectResult,
   Point,
   ProjectSnapshot,
+  WidgetEventType,
   WidgetType,
 } from "./types";
 
@@ -65,6 +67,10 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
       deleteStyleToken: (tokenId: string) => dispatch({ type: "deleteStyleToken", tokenId }),
       assignWidgetStyleToken: (widgetId: string, propertyName: "fill" | "textColor", tokenId: string | null) =>
         dispatch({ type: "assignWidgetStyleToken", widgetId, propertyName, tokenId }),
+      upsertWidgetEventBinding: (widgetId: string, binding: EventBinding) =>
+        dispatch({ type: "upsertWidgetEventBinding", widgetId, binding }),
+      removeWidgetEventBinding: (widgetId: string, event: WidgetEventType) =>
+        dispatch({ type: "removeWidgetEventBinding", widgetId, event }),
       updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) =>
         dispatch({ type: "updateScreenMeta", screenId, key, value }),
       serializeProject: () => serializeProjectSnapshot(state.project),

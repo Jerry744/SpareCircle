@@ -1,4 +1,6 @@
 import {
+  KNOWN_WIDGET_EVENTS,
+  type EventBinding,
   INSERTABLE_WIDGET_TYPES,
   type EditableWidgetProperty,
   type EditableWidgetPropertyValue,
@@ -9,6 +11,8 @@ import {
   type ScreenModel,
   type StyleToken,
   type WidgetNode,
+  type WidgetEventBindings,
+  type WidgetEventType,
   type WidgetType,
 } from "./types";
 import {
@@ -131,6 +135,66 @@ function getNextWidgetId(project: ProjectSnapshot, preferredPrefix: string): str
     counter += 1;
   }
   return `${safePrefix}-${counter}`;
+}
+
+function isScreenRootWidget(project: ProjectSnapshot, widgetId: string): boolean {
+  return project.screens.some((screen) => screen.rootNodeId === widgetId);
+}
+
+function isBindingValid(project: ProjectSnapshot, binding: EventBinding): boolean {
+  if (binding.action.type === "switch_screen") {
+    return project.screens.some((screen) => screen.id === binding.action.targetScreenId);
+  }
+
+  if (!project.widgetsById[binding.action.targetWidgetId]) {
+    return false;
+  }
+
+  return !isScreenRootWidget(project, binding.action.targetWidgetId);
+}
+
+function pruneDanglingEventBindings(project: ProjectSnapshot): ProjectSnapshot {
+  const nextWidgetsById = { ...project.widgetsById };
+  let changed = false;
+
+  for (const [widgetId, widget] of Object.entries(project.widgetsById)) {
+    if (!widget.eventBindings) {
+      continue;
+    }
+
+    const nextBindings: WidgetEventBindings = {};
+    for (const event of KNOWN_WIDGET_EVENTS) {
+      const binding = widget.eventBindings[event];
+      if (!binding) {
+        continue;
+      }
+
+      if (binding.event !== event || !isBindingValid(project, binding)) {
+        changed = true;
+        continue;
+      }
+
+      nextBindings[event] = binding;
+    }
+
+    const resolvedBindings = Object.keys(nextBindings).length > 0 ? nextBindings : undefined;
+    if (resolvedBindings !== widget.eventBindings) {
+      changed = true;
+      nextWidgetsById[widgetId] = {
+        ...widget,
+        eventBindings: resolvedBindings,
+      };
+    }
+  }
+
+  if (!changed) {
+    return project;
+  }
+
+  return {
+    ...project,
+    widgetsById: nextWidgetsById,
+  };
 }
 
 function getScreenFallbackId(screens: ScreenModel[], removedScreenId: string): string {
@@ -348,7 +412,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         activeScreenId: state.project.activeScreenId === screenId ? fallbackId : state.project.activeScreenId,
       };
 
-      return commitProjectChange(state, nextProject, []);
+      return commitProjectChange(state, pruneDanglingEventBindings(nextProject), []);
     }
     case "beginInteraction": {
       const widgetIds = action.widgetIds as string[];
@@ -620,6 +684,59 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
       return commitProjectChange(state, nextProject, [widgetId]);
     }
+    case "upsertWidgetEventBinding": {
+      const widgetId = action.widgetId as string;
+      const binding = action.binding as EventBinding;
+
+      if (!widgetId || !binding || !KNOWN_WIDGET_EVENTS.includes(binding.event)) {
+        return state;
+      }
+
+      const targetWidget = getWidgetById(state.project, widgetId);
+      if (!targetWidget || !isBindingValid(state.project, binding)) {
+        return state;
+      }
+
+      const nextBindings: WidgetEventBindings = {
+        ...(targetWidget.eventBindings ?? {}),
+        [binding.event]: binding,
+      };
+
+      const nextProject = transformProjectWidgets(state.project, [widgetId], (widget: WidgetNode) => ({
+        ...widget,
+        eventBindings: nextBindings,
+      }));
+
+      if (JSON.stringify(nextProject) === JSON.stringify(state.project)) {
+        return state;
+      }
+
+      return commitProjectChange(state, nextProject, [widgetId]);
+    }
+    case "removeWidgetEventBinding": {
+      const widgetId = action.widgetId as string;
+      const event = action.event as WidgetEventType;
+      if (!widgetId || !KNOWN_WIDGET_EVENTS.includes(event)) {
+        return state;
+      }
+
+      const targetWidget = getWidgetById(state.project, widgetId);
+      if (!targetWidget?.eventBindings?.[event]) {
+        return state;
+      }
+
+      const nextProject = transformProjectWidgets(state.project, [widgetId], (widget: WidgetNode) => {
+        const nextBindings: WidgetEventBindings = { ...(widget.eventBindings ?? {}) };
+        delete nextBindings[event];
+
+        return {
+          ...widget,
+          eventBindings: Object.keys(nextBindings).length > 0 ? nextBindings : undefined,
+        };
+      });
+
+      return commitProjectChange(state, nextProject, [widgetId]);
+    }
     case "updateScreenMeta": {
       const screenId = action.screenId as string;
       const key = action.key as "width" | "height" | "fill";
@@ -677,7 +794,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
       return {
         ...state,
-        project: cloneProject(project),
+        project: pruneDanglingEventBindings(cloneProject(project)),
         selectedWidgetIds: [],
         history: {
           past: [],

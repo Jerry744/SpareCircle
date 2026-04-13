@@ -60,4 +60,34 @@ describe("Demo5 LVGL codegen", () => {
     expect(files["ui.c"]).toContain("lv_obj_set_style_bg_color");
     expect(files["ui.c"]).toContain("SC_TOKEN_PRIMARY");
   });
+
+  it("emits callback stubs and event registrations for bindings", () => {
+    const project = createInitialProject();
+    project.widgetsById.Button1.eventBindings = {
+      clicked: {
+        event: "clicked",
+        action: {
+          type: "switch_screen",
+          targetScreenId: "screen-1",
+        },
+      },
+      pressed: {
+        event: "pressed",
+        action: {
+          type: "toggle_visibility",
+          targetWidgetId: "TempLabel",
+        },
+      },
+    };
+
+    const files = generateLvglFiles(project);
+
+    expect(files["ui_events.c"]).toContain("void ui_events_init(void)");
+    expect(files["ui_events.c"]).toContain("sc_event_cb_");
+    expect(files["ui_events.c"]).toContain("LV_EVENT_CLICKED");
+    expect(files["ui_events.c"]).toContain("LV_EVENT_PRESSED");
+    expect(files["ui_events.c"]).toContain("lv_screen_load");
+    expect(files["ui_events.c"]).toContain("LV_OBJ_FLAG_HIDDEN");
+    expect(files["ui.c"]).toContain("ui_events_init();");
+  });
 });

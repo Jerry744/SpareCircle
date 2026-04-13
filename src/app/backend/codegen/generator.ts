@@ -37,6 +37,7 @@ export function generateUiHeader(ir: LvglProjectIR): string {
   }
 
   lines.push("void ui_init(void);");
+  lines.push("void ui_events_init(void);");
   lines.push("");
   lines.push("#ifdef __cplusplus");
   lines.push("}");
@@ -50,6 +51,8 @@ export function generateUiHeader(ir: LvglProjectIR): string {
 export function generateUiSource(ir: LvglProjectIR): string {
   const lines: string[] = [
     "#include \"ui.h\"",
+    "",
+    "void ui_events_init(void);",
     "",
   ];
 
@@ -87,6 +90,8 @@ export function generateUiSource(ir: LvglProjectIR): string {
     lines.push(`  ${screen.cName}_init();`);
   }
 
+  lines.push("  ui_events_init();");
+
   if (ir.screens.length > 0) {
     lines.push(`  lv_screen_load(${ir.activeScreenCName});`);
   }
@@ -97,13 +102,126 @@ export function generateUiSource(ir: LvglProjectIR): string {
   return lines.join("\n");
 }
 
-export function generateUiEventsSource(): string {
-  return [
+function mapEventToLvglMacro(event: string): string {
+  switch (event) {
+    case "clicked":
+      return "LV_EVENT_CLICKED";
+    case "pressed":
+      return "LV_EVENT_PRESSED";
+    case "value_changed":
+      return "LV_EVENT_VALUE_CHANGED";
+    default:
+      return "LV_EVENT_ALL";
+  }
+}
+
+export function generateUiEventsSource(ir: LvglProjectIR): string {
+  const lines: string[] = [
     "#include \"ui.h\"",
     "",
-    "// Demo5 minimal export: event stubs are intentionally left empty.",
+    "typedef enum {",
+    "  SC_EVENT_ACTION_NONE = 0,",
+    "  SC_EVENT_ACTION_SWITCH_SCREEN,",
+    "  SC_EVENT_ACTION_TOGGLE_VISIBILITY,",
+    "} sc_event_action_type_t;",
     "",
-  ].join("\n");
+    "typedef struct {",
+    "  sc_event_action_type_t type;",
+    "  lv_obj_t **target_widget;",
+    "  lv_obj_t **target_screen;",
+    "} sc_event_action_t;",
+    "",
+    "static void sc_apply_event_action(const sc_event_action_t *action) {",
+    "  if (action == NULL) {",
+    "    return;",
+    "  }",
+    "",
+    "  switch (action->type) {",
+    "    case SC_EVENT_ACTION_SWITCH_SCREEN:",
+    "      if (action->target_screen != NULL && *action->target_screen != NULL) {",
+    "        lv_screen_load(*action->target_screen);",
+    "      }",
+    "      break;",
+    "    case SC_EVENT_ACTION_TOGGLE_VISIBILITY:",
+    "      if (action->target_widget != NULL && *action->target_widget != NULL) {",
+    "        if (lv_obj_has_flag(*action->target_widget, LV_OBJ_FLAG_HIDDEN)) {",
+    "          lv_obj_clear_flag(*action->target_widget, LV_OBJ_FLAG_HIDDEN);",
+    "        } else {",
+    "          lv_obj_add_flag(*action->target_widget, LV_OBJ_FLAG_HIDDEN);",
+    "        }",
+    "      }",
+    "      break;",
+    "    default:",
+    "      break;",
+    "  }",
+    "}",
+    "",
+    "static void sc_event_cb(lv_event_t *event) {",
+    "  const sc_event_action_t *action = (const sc_event_action_t *)lv_event_get_user_data(event);",
+    "  sc_apply_event_action(action);",
+    "}",
+    "",
+  ];
+
+  const actionObjects: string[] = [];
+  const registrationLines: string[] = ["void ui_events_init(void) {"];
+
+  for (const screen of ir.screens) {
+    for (const widget of screen.widgets) {
+      const bindings = widget.eventBindings;
+      if (!bindings) {
+        continue;
+      }
+
+      for (const event of Object.keys(bindings)) {
+        const binding = bindings[event as keyof typeof bindings];
+        if (!binding) {
+          continue;
+        }
+
+        const actionName = `sc_action_${screen.cName}_${widget.cName}_${event}`;
+        const callbackName = `sc_event_cb_${screen.cName}_${widget.cName}_${event}`;
+        if (binding.action.type === "switch_screen") {
+          const targetScreenId = binding.action.targetScreenId;
+          const targetScreen = ir.screens.find((candidate) => candidate.id === targetScreenId);
+          const targetName = targetScreen?.cName ?? ir.activeScreenCName;
+          actionObjects.push(`static const sc_event_action_t ${actionName} = {`);
+          actionObjects.push(`  .type = SC_EVENT_ACTION_SWITCH_SCREEN,`);
+          actionObjects.push(`  .target_screen = &${targetName},`);
+          actionObjects.push("};");
+        } else {
+          const targetWidgetId = binding.action.targetWidgetId;
+          actionObjects.push(`static const sc_event_action_t ${actionName} = {`);
+          actionObjects.push(`  .type = SC_EVENT_ACTION_TOGGLE_VISIBILITY,`);
+          actionObjects.push(`  .target_widget = &${targetWidgetId},`);
+          actionObjects.push("};");
+        }
+
+        actionObjects.push(`static void ${callbackName}(lv_event_t *event) { sc_event_cb(event); }`);
+        registrationLines.push(`  lv_obj_add_event_cb(${widget.cName}, ${callbackName}, ${mapEventToLvglMacro(event)}, (void *)&${actionName});`);
+      }
+    }
+  }
+
+  if (actionObjects.length > 0) {
+    lines.push(...actionObjects, "");
+  }
+
+  registrationLines.push("}", "");
+  lines.push(...registrationLines);
+
+  if (actionObjects.length === 0) {
+    return [
+      "#include \"ui.h\"",
+      "",
+      "void ui_events_init(void) {",
+      "  // No event bindings were exported for this project.",
+      "}",
+      "",
+    ].join("\n");
+  }
+
+  return lines.join("\n");
 }
 
 export function generateLvglFiles(project: ProjectSnapshot): Record<string, string> {
@@ -112,7 +230,7 @@ export function generateLvglFiles(project: ProjectSnapshot): Record<string, stri
   return {
     "ui.h": generateUiHeader(ir),
     "ui.c": generateUiSource(ir),
-    "ui_events.c": generateUiEventsSource(),
+    "ui_events.c": generateUiEventsSource(ir),
   };
 }
 

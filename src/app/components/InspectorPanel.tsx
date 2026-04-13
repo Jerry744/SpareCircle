@@ -153,7 +153,7 @@ function validateField(
   return { ok: true, normalized: draft, display: draft };
 }
 
-export function InspectorPanel() {
+export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     position: true,
     style: true,
@@ -311,9 +311,11 @@ export function InspectorPanel() {
 
   return (
     <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex flex-col">
-      <div className="h-10 flex items-center px-3 border-b border-[#1e1e1e]">
-        <span className="text-xs font-semibold text-gray-400">INSPECTOR</span>
-      </div>
+      {showHeader ? (
+        <div className="h-10 flex items-center px-3 border-b border-[#1e1e1e]">
+          <span className="text-xs font-semibold text-gray-400">INSPECTOR</span>
+        </div>
+      ) : null}
       <div className="flex-1 overflow-y-auto">
         {/* Widget Info */}
         <div className="p-3 border-b border-[#1e1e1e]">

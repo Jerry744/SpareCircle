@@ -2,6 +2,27 @@ export type WidgetType = "Screen" | "Container" | "Panel" | "Label" | "Button" |
 
 export type EditableWidgetProperty = "x" | "y" | "width" | "height" | "text" | "fill" | "textColor" | "visible";
 export type EditableWidgetPropertyValue = string | number | boolean;
+export type WidgetEventType = "clicked" | "pressed" | "value_changed";
+export type WidgetActionType = "switch_screen" | "toggle_visibility";
+
+export interface SwitchScreenAction {
+  type: "switch_screen";
+  targetScreenId: string;
+}
+
+export interface ToggleVisibilityAction {
+  type: "toggle_visibility";
+  targetWidgetId: string;
+}
+
+export type WidgetEventAction = SwitchScreenAction | ToggleVisibilityAction;
+
+export interface EventBinding {
+  event: WidgetEventType;
+  action: WidgetEventAction;
+}
+
+export type WidgetEventBindings = Partial<Record<WidgetEventType, EventBinding>>;
 
 export type StyleTokenType = "color";
 
@@ -30,6 +51,7 @@ export interface WidgetNode {
   radius?: number;
   visible?: boolean;
   locked?: boolean;
+  eventBindings?: WidgetEventBindings;
 }
 
 export interface ScreenMeta {
@@ -107,6 +129,8 @@ export interface EditorBackendValue {
     updateStyleToken: (tokenId: string, updates: { name?: string; value?: string }) => void;
     deleteStyleToken: (tokenId: string) => void;
     assignWidgetStyleToken: (widgetId: string, propertyName: "fill" | "textColor", tokenId: string | null) => void;
+    upsertWidgetEventBinding: (widgetId: string, binding: EventBinding) => void;
+    removeWidgetEventBinding: (widgetId: string, event: WidgetEventType) => void;
     updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) => void;
     serializeProject: () => string;
     hydrateProject: (serializedProject: string) => HydrateProjectResult;
@@ -117,6 +141,8 @@ export interface EditorBackendValue {
 }
 
 export const KNOWN_WIDGET_TYPES: WidgetType[] = ["Screen", "Container", "Panel", "Label", "Button", "Slider", "Switch", "Image"];
+export const KNOWN_WIDGET_EVENTS: WidgetEventType[] = ["clicked", "pressed", "value_changed"];
+export const KNOWN_WIDGET_ACTIONS: WidgetActionType[] = ["switch_screen", "toggle_visibility"];
 
 export const WIDGET_EDITABLE_PROPERTIES: Record<WidgetType, ReadonlySet<EditableWidgetProperty>> = {
   Screen: new Set(["width", "height", "fill", "visible"]),

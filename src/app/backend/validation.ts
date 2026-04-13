@@ -1,6 +1,9 @@
 import {
+  KNOWN_WIDGET_ACTIONS,
+  KNOWN_WIDGET_EVENTS,
   KNOWN_WIDGET_TYPES,
   WIDGET_EDITABLE_PROPERTIES,
+  type EventBinding,
   type StyleToken,
   type EditableWidgetProperty,
   type EditableWidgetPropertyValue,
@@ -8,6 +11,9 @@ import {
   type ScreenMeta,
   type ScreenModel,
   type WidgetNode,
+  type WidgetEventAction,
+  type WidgetEventBindings,
+  type WidgetEventType,
   type WidgetType,
 } from "./types";
 import { MATERIAL_COLOR_PRESET } from "../constants/designTokens";
@@ -33,6 +39,98 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isWidgetType(value: unknown): value is WidgetType {
   return typeof value === "string" && KNOWN_WIDGET_TYPES.includes(value as WidgetType);
+}
+
+function isWidgetEventType(value: unknown): value is WidgetEventType {
+  return typeof value === "string" && KNOWN_WIDGET_EVENTS.includes(value as WidgetEventType);
+}
+
+function isWidgetActionType(value: unknown): value is WidgetEventAction["type"] {
+  return typeof value === "string" && KNOWN_WIDGET_ACTIONS.includes(value as WidgetEventAction["type"]);
+}
+
+function parseEventBinding(input: unknown, path: string): { ok: true; binding: EventBinding } | { ok: false; error: string } {
+  if (!isRecord(input)) {
+    return { ok: false, error: `${path} must be an object` };
+  }
+
+  const event = input.event;
+  if (!isWidgetEventType(event)) {
+    return { ok: false, error: `${path}.event is invalid` };
+  }
+
+  const action = input.action;
+  if (!isRecord(action) || !isWidgetActionType(action.type)) {
+    return { ok: false, error: `${path}.action.type is invalid` };
+  }
+
+  if (action.type === "switch_screen") {
+    if (typeof action.targetScreenId !== "string" || !action.targetScreenId.trim()) {
+      return { ok: false, error: `${path}.action.targetScreenId must be a non-empty string` };
+    }
+
+    return {
+      ok: true,
+      binding: {
+        event,
+        action: {
+          type: "switch_screen",
+          targetScreenId: action.targetScreenId,
+        },
+      },
+    };
+  }
+
+  if (typeof action.targetWidgetId !== "string" || !action.targetWidgetId.trim()) {
+    return { ok: false, error: `${path}.action.targetWidgetId must be a non-empty string` };
+  }
+
+  return {
+    ok: true,
+    binding: {
+      event,
+      action: {
+        type: "toggle_visibility",
+        targetWidgetId: action.targetWidgetId,
+      },
+    },
+  };
+}
+
+function parseEventBindingsMap(input: unknown, path: string):
+  { ok: true; eventBindings: WidgetEventBindings | undefined }
+  | { ok: false; error: string } {
+  if (input === undefined) {
+    return { ok: true, eventBindings: undefined };
+  }
+
+  if (!isRecord(input)) {
+    return { ok: false, error: `${path} must be an object when provided` };
+  }
+
+  const eventBindings: WidgetEventBindings = {};
+  for (const event of KNOWN_WIDGET_EVENTS) {
+    const bindingRaw = input[event];
+    if (bindingRaw === undefined) {
+      continue;
+    }
+
+    const parsed = parseEventBinding(bindingRaw, `${path}.${event}`);
+    if (!parsed.ok) {
+      return parsed;
+    }
+
+    if (parsed.binding.event !== event) {
+      return { ok: false, error: `${path}.${event}.event must match its map key` };
+    }
+
+    eventBindings[event] = parsed.binding;
+  }
+
+  return {
+    ok: true,
+    eventBindings: Object.keys(eventBindings).length > 0 ? eventBindings : undefined,
+  };
 }
 
 export function isEditableWidgetProperty(value: unknown): value is EditableWidgetProperty {
@@ -222,6 +320,7 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
   const maybeRadius = input.radius;
   const maybeVisible = input.visible;
   const maybeLocked = input.locked;
+  const maybeEventBindings = input.eventBindings;
 
   if (maybeText !== undefined && typeof maybeText !== "string") {
     return { ok: false, error: `${path}.text must be a string when provided` };
@@ -248,6 +347,11 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
     return { ok: false, error: `${path}.locked must be a boolean when provided` };
   }
 
+  const parsedEventBindings = parseEventBindingsMap(maybeEventBindings, `${path}.eventBindings`);
+  if (!parsedEventBindings.ok) {
+    return parsedEventBindings;
+  }
+
   return {
     ok: true,
     widget: {
@@ -268,6 +372,7 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
       radius: maybeRadius,
       visible: maybeVisible,
       locked: maybeLocked,
+      eventBindings: parsedEventBindings.eventBindings,
     },
   };
 }
@@ -379,6 +484,8 @@ function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSna
     }
   }
 
+  const screenIds = new Set<string>();
+
   const parsedScreens: ScreenModel[] = [];
   for (let index = 0; index < screens.length; index += 1) {
     const screenRaw = screens[index];
@@ -419,6 +526,29 @@ function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSna
       rootNodeId,
       meta: parsedMeta.meta,
     });
+    screenIds.add(id);
+  }
+
+  for (const widget of Object.values(parsedWidgets)) {
+    const bindings = widget.eventBindings;
+    if (!bindings) {
+      continue;
+    }
+
+    for (const event of KNOWN_WIDGET_EVENTS) {
+      const binding = bindings[event];
+      if (!binding) {
+        continue;
+      }
+
+      if (binding.action.type === "switch_screen" && !screenIds.has(binding.action.targetScreenId)) {
+        return { ok: false, error: `Widget ${widget.id} binding ${event} references missing screen ${binding.action.targetScreenId}` };
+      }
+
+      if (binding.action.type === "toggle_visibility" && !parsedWidgets[binding.action.targetWidgetId]) {
+        return { ok: false, error: `Widget ${widget.id} binding ${event} references missing widget ${binding.action.targetWidgetId}` };
+      }
+    }
   }
 
   for (const widget of Object.values(parsedWidgets)) {

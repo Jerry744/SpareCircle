@@ -161,4 +161,68 @@ describe("editorReducer screen lifecycle", () => {
     expect(deleted.project.widgetsById.Button1.fillTokenId).toBeUndefined();
     expect(deleted.project.widgetsById.TempLabel.textColorTokenId).toBeUndefined();
   });
+
+  it("upserts and removes widget event bindings", () => {
+    const state = createState();
+
+    const bound = editorReducer(state, {
+      type: "upsertWidgetEventBinding",
+      widgetId: "Button1",
+      binding: {
+        event: "clicked",
+        action: {
+          type: "switch_screen",
+          targetScreenId: "screen-1",
+        },
+      },
+    });
+
+    expect(bound.project.widgetsById.Button1.eventBindings?.clicked?.action.type).toBe("switch_screen");
+
+    const removed = editorReducer(bound, {
+      type: "removeWidgetEventBinding",
+      widgetId: "Button1",
+      event: "clicked",
+    });
+
+    expect(removed.project.widgetsById.Button1.eventBindings?.clicked).toBeUndefined();
+  });
+
+  it("rejects invalid event binding targets and prunes deleted references", () => {
+    const state = createState();
+
+    const rejected = editorReducer(state, {
+      type: "upsertWidgetEventBinding",
+      widgetId: "Button1",
+      binding: {
+        event: "clicked",
+        action: {
+          type: "switch_screen",
+          targetScreenId: "missing-screen",
+        },
+      },
+    });
+
+    expect(rejected).toBe(state);
+
+    const withScreen = editorReducer(state, { type: "createScreen" });
+    const withBinding = editorReducer(withScreen, {
+      type: "upsertWidgetEventBinding",
+      widgetId: "Button1",
+      binding: {
+        event: "clicked",
+        action: {
+          type: "switch_screen",
+          targetScreenId: withScreen.project.activeScreenId,
+        },
+      },
+    });
+
+    const deletedScreen = editorReducer(withBinding, {
+      type: "deleteScreen",
+      screenId: withScreen.project.activeScreenId,
+    });
+
+    expect(deletedScreen.project.widgetsById.Button1.eventBindings?.clicked).toBeUndefined();
+  });
 });
