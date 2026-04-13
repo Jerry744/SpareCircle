@@ -40,6 +40,10 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
       selectWidget: (widgetId: string, additive = false) => dispatch({ type: "selectWidget", widgetId, additive }),
       clearSelection: () => dispatch({ type: "clearSelection" }),
       setActiveScreen: (screenId: string) => dispatch({ type: "setActiveScreen", screenId }),
+      createScreen: () => dispatch({ type: "createScreen" }),
+      renameScreen: (screenId: string, name: string) => dispatch({ type: "renameScreen", screenId, name }),
+      duplicateScreen: (screenId: string) => dispatch({ type: "duplicateScreen", screenId }),
+      deleteScreen: (screenId: string) => dispatch({ type: "deleteScreen", screenId }),
       beginInteraction: (kind: "move" | "resize", widgetIds: string[], pointer: Point, handle?: "se") =>
         dispatch({ type: "beginInteraction", kind, widgetIds, pointer, handle }),
       updateInteraction: (pointer: Point) => dispatch({ type: "updateInteraction", pointer }),
@@ -51,6 +55,8 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "moveWidget", widgetId, targetParentId, targetIndex }),
       updateWidgetProperty: (widgetId: string, propertyName: EditableWidgetProperty, value: EditableWidgetPropertyValue) =>
         dispatch({ type: "updateWidgetProperty", widgetId, propertyName, value }),
+      updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) =>
+        dispatch({ type: "updateScreenMeta", screenId, key, value }),
       serializeProject: () => serializeProjectSnapshot(state.project),
       hydrateProject: (serializedProject: string): HydrateProjectResult => {
         const result = deserializeProjectSnapshot(serializedProject);

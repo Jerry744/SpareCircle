@@ -1,5 +1,5 @@
 import type { InteractionState, Point, ProjectSnapshot } from "./types";
-import { mapWidgetTree, transformProjectWidgets, updateActiveScreen } from "./tree";
+import { transformProjectWidgets } from "./tree";
 
 export function moveProjectWidgets(project: ProjectSnapshot, widgetIds: string[], dx: number, dy: number): ProjectSnapshot {
   return transformProjectWidgets(project, widgetIds, (widget) => ({
@@ -10,15 +10,10 @@ export function moveProjectWidgets(project: ProjectSnapshot, widgetIds: string[]
 }
 
 export function resizeProjectWidget(project: ProjectSnapshot, widgetId: string, dx: number, dy: number): ProjectSnapshot {
-  const ids = new Set([widgetId]);
-
-  return updateActiveScreen(project, (screen) => ({
-    ...screen,
-    rootWidget: mapWidgetTree(screen.rootWidget, ids, (widget) => ({
-      ...widget,
-      width: Math.max(24, widget.width + dx),
-      height: Math.max(24, widget.height + dy),
-    })),
+  return transformProjectWidgets(project, [widgetId], (widget) => ({
+    ...widget,
+    width: Math.max(24, widget.width + dx),
+    height: Math.max(24, widget.height + dy),
   }));
 }
 

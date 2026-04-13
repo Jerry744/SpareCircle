@@ -4,7 +4,6 @@ import {
   type WidgetNode,
   type WidgetType,
 } from "./types";
-import { flattenWidgetTree } from "./tree";
 
 export function mapPaletteWidgetToType(widgetId: string): WidgetType | null {
   const normalized = widgetId.trim().toLowerCase();
@@ -43,13 +42,7 @@ function getDefaultWidgetSize(widgetType: WidgetType): { width: number; height: 
 
 function getNextWidgetId(project: ProjectSnapshot, widgetType: WidgetType): string {
   const prefix = widgetType.toLowerCase();
-  const usedIds = new Set<string>();
-
-  for (const screen of project.screens) {
-    for (const item of flattenWidgetTree(screen.rootWidget)) {
-      usedIds.add(item.widget.id);
-    }
-  }
+  const usedIds = new Set<string>(Object.keys(project.widgetsById));
 
   let counter = 1;
   while (usedIds.has(`${prefix}-${counter}`)) {
@@ -68,13 +61,14 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
       id,
       name: "Label",
       type: "Label",
+      parentId: null,
+      childrenIds: [],
       x,
       y,
       width: baseSize.width,
       height: baseSize.height,
       text: "Label",
       textColor: "#f3f4f6",
-      children: [],
     };
   }
 
@@ -83,6 +77,8 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
       id,
       name: "Button",
       type: "Button",
+      parentId: null,
+      childrenIds: [],
       x,
       y,
       width: baseSize.width,
@@ -91,7 +87,6 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
       fill: "#3b82f6",
       textColor: "#ffffff",
       radius: 10,
-      children: [],
     };
   }
 
@@ -100,12 +95,13 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
       id,
       name: "Image",
       type: "Image",
+      parentId: null,
+      childrenIds: [],
       x,
       y,
       width: baseSize.width,
       height: baseSize.height,
       fill: "#374151",
-      children: [],
     };
   }
 
@@ -114,13 +110,14 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
       id,
       name: "Panel",
       type: "Panel",
+      parentId: null,
+      childrenIds: [],
       x,
       y,
       width: baseSize.width,
       height: baseSize.height,
       fill: "#111827",
       radius: 12,
-      children: [],
     };
   }
 
@@ -128,12 +125,13 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
     id,
     name: "Container",
     type: "Container",
+    parentId: null,
+    childrenIds: [],
     x,
     y,
     width: baseSize.width,
     height: baseSize.height,
     fill: "#252525",
     radius: 12,
-    children: [],
   };
 }

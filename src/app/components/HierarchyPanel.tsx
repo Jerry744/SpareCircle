@@ -1,10 +1,11 @@
 import { ChevronRight, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import {
+  buildWidgetTree,
   canContainChildren,
   getActiveScreenFromProject,
   useEditorBackend,
-  type WidgetNode,
+  type WidgetTreeNode,
 } from "../backend/editorStore";
 
 type DropPosition = "before" | "inside" | "after";
@@ -12,10 +13,10 @@ type DropPosition = "before" | "inside" | "after";
 type WidgetLocation = {
   parentId: string | null;
   index: number;
-  widget: WidgetNode;
+  widget: WidgetTreeNode;
 };
 
-function findWidgetLocation(widget: WidgetNode, widgetId: string, parentId: string | null = null): WidgetLocation | null {
+function findWidgetLocation(widget: WidgetTreeNode, widgetId: string, parentId: string | null = null): WidgetLocation | null {
   if (widget.id === widgetId) {
     return { parentId, index: 0, widget };
   }
@@ -35,7 +36,7 @@ function findWidgetLocation(widget: WidgetNode, widgetId: string, parentId: stri
   return null;
 }
 
-function resolveDropPosition(widget: WidgetNode, event: React.DragEvent<HTMLDivElement>): DropPosition {
+function resolveDropPosition(widget: WidgetTreeNode, event: React.DragEvent<HTMLDivElement>): DropPosition {
   const rect = event.currentTarget.getBoundingClientRect();
   const relativeY = (event.clientY - rect.top) / rect.height;
 
@@ -55,8 +56,9 @@ export function HierarchyPanel() {
     actions: { selectWidget, moveWidget },
   } = useEditorBackend();
   const activeScreen = getActiveScreenFromProject(project);
+  const rootTree = buildWidgetTree(project, activeScreen.rootNodeId);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({
-    [activeScreen.rootWidget.id]: true,
+    [activeScreen.rootNodeId]: true,
     Container1: true,
   });
   const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
@@ -68,7 +70,10 @@ export function HierarchyPanel() {
   };
 
   const performMove = (widgetId: string, targetWidgetId: string, position: DropPosition) => {
-    const root = activeScreen.rootWidget;
+    if (!rootTree) {
+      return;
+    }
+    const root = rootTree;
 
     if (widgetId === targetWidgetId) {
       return;
@@ -93,7 +98,7 @@ export function HierarchyPanel() {
     moveWidget(widgetId, targetLocation.parentId, targetLocation.index + indexOffset);
   };
 
-  const renderItem = (widget: WidgetNode, depth: number = 0) => {
+  const renderItem = (widget: WidgetTreeNode, depth: number = 0) => {
     const hasChildren = widget.children.length > 0;
     const isSelected = selectedWidgetIds.includes(widget.id);
     const expanded = depth === 0 ? true : expandedIds[widget.id] ?? true;
@@ -188,7 +193,7 @@ export function HierarchyPanel() {
         <span className="text-xs font-semibold text-gray-400">HIERARCHY</span>
       </div>
       <div className="flex-1 overflow-y-auto p-2 group">
-        {renderItem(activeScreen.rootWidget)}
+        {rootTree ? renderItem(rootTree) : null}
       </div>
     </div>
   );

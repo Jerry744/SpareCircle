@@ -7,6 +7,8 @@ export interface WidgetNode {
   id: string;
   name: string;
   type: WidgetType;
+  parentId: string | null;
+  childrenIds: string[];
   x: number;
   y: number;
   width: number;
@@ -17,20 +19,25 @@ export interface WidgetNode {
   radius?: number;
   visible?: boolean;
   locked?: boolean;
-  children: WidgetNode[];
+}
+
+export interface ScreenMeta {
+  width: number;
+  height: number;
+  fill?: string;
 }
 
 export interface ScreenModel {
   id: string;
   name: string;
-  width: number;
-  height: number;
-  rootWidget: WidgetNode;
+  rootNodeId: string;
+  meta: ScreenMeta;
 }
 
 export interface ProjectSnapshot {
   screens: ScreenModel[];
   activeScreenId: string;
+  widgetsById: Record<string, WidgetNode>;
 }
 
 export type HydrateProjectResult = { ok: true } | { ok: false; error: string };
@@ -67,6 +74,10 @@ export interface EditorBackendValue {
     selectWidget: (widgetId: string, additive?: boolean) => void;
     clearSelection: () => void;
     setActiveScreen: (screenId: string) => void;
+    createScreen: () => void;
+    renameScreen: (screenId: string, name: string) => void;
+    duplicateScreen: (screenId: string) => void;
+    deleteScreen: (screenId: string) => void;
     beginInteraction: (kind: "move" | "resize", widgetIds: string[], pointer: Point, handle?: "se") => void;
     updateInteraction: (pointer: Point) => void;
     commitInteraction: () => void;
@@ -78,6 +89,7 @@ export interface EditorBackendValue {
       propertyName: EditableWidgetProperty,
       value: EditableWidgetPropertyValue,
     ) => void;
+    updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) => void;
     serializeProject: () => string;
     hydrateProject: (serializedProject: string) => HydrateProjectResult;
     undo: () => void;

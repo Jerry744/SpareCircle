@@ -1,8 +1,9 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  findWidgetById,
+  collectSubtreeIds,
   getActiveScreenFromProject,
+  getWidgetById,
   useEditorBackend,
   type EditableWidgetProperty,
   type EditableWidgetPropertyValue,
@@ -185,8 +186,9 @@ export function InspectorPanel() {
   } = useEditorBackend();
 
   const activeScreen = getActiveScreenFromProject(project);
-  const selectedWidget = selectedWidgetIds.length === 1 && selectedWidgetIds[0]
-    ? findWidgetById(activeScreen.rootWidget, selectedWidgetIds[0])
+  const activeScreenNodeIds = useMemo(() => collectSubtreeIds(project, activeScreen.rootNodeId), [project, activeScreen.rootNodeId]);
+  const selectedWidget = selectedWidgetIds.length === 1 && selectedWidgetIds[0] && activeScreenNodeIds.has(selectedWidgetIds[0])
+    ? getWidgetById(project, selectedWidgetIds[0])
     : null;
 
   const activeFields = useMemo(() => {

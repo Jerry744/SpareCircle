@@ -1,13 +1,14 @@
 import { ZoomIn, ZoomOut, Maximize } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import {
+  buildWidgetTree,
   canContainChildren,
   flattenWidgetTree,
   getActiveScreenFromProject,
   mapPaletteWidgetToType,
   useEditorBackend,
   type Point,
-  type WidgetNode,
+  type WidgetTreeNode,
 } from "../backend/editorStore";
 
 interface Camera {
@@ -23,7 +24,7 @@ interface SafariGestureEvent extends Event {
 }
 
 type HitResult = {
-  widget: WidgetNode;
+  widget: WidgetTreeNode;
   absX: number;
   absY: number;
   mode: "body" | "resize";
@@ -65,6 +66,7 @@ export function CanvasViewport() {
   } = useEditorBackend();
 
   const activeScreen = getActiveScreenFromProject(project);
+  const rootTree = buildWidgetTree(project, activeScreen.rootNodeId);
 
   // 屏幕坐标转世界坐标
   const screenToWorldRef = (screenX: number, screenY: number) => {
@@ -143,7 +145,7 @@ export function CanvasViewport() {
     ctx.closePath();
   };
 
-  const drawWidget = (ctx: CanvasRenderingContext2D, widget: WidgetNode, absX: number, absY: number, depth: number) => {
+  const drawWidget = (ctx: CanvasRenderingContext2D, widget: WidgetTreeNode, absX: number, absY: number, depth: number) => {
     if (widget.visible === false) {
       return;
     }
@@ -219,7 +221,11 @@ export function CanvasViewport() {
   };
 
   const getHitTarget = (point: Point): HitResult | null => {
-    const allWidgets = flattenWidgetTree(activeScreen.rootWidget);
+    if (!rootTree) {
+      return null;
+    }
+
+    const allWidgets = flattenWidgetTree(rootTree);
 
     for (let index = allWidgets.length - 1; index >= 0; index -= 1) {
       const item = allWidgets[index];
@@ -248,8 +254,12 @@ export function CanvasViewport() {
     return null;
   };
 
-  const getDropContainer = (point: Point): { widget: WidgetNode; absX: number; absY: number } => {
-    const allWidgets = flattenWidgetTree(activeScreen.rootWidget);
+  const getDropContainer = (point: Point): { widget: WidgetTreeNode; absX: number; absY: number } | null => {
+    if (!rootTree) {
+      return null;
+    }
+
+    const allWidgets = flattenWidgetTree(rootTree);
 
     for (let index = allWidgets.length - 1; index >= 0; index -= 1) {
       const item = allWidgets[index];
@@ -268,7 +278,7 @@ export function CanvasViewport() {
     }
 
     return {
-      widget: activeScreen.rootWidget,
+      widget: rootTree,
       absX: 0,
       absY: 0,
     };
@@ -285,6 +295,9 @@ export function CanvasViewport() {
 
     const world = screenToWorldRef(event.clientX, event.clientY);
     const parentInfo = getDropContainer(world);
+    if (!parentInfo) {
+      return;
+    }
     const localX = Math.round(world.x - parentInfo.absX);
     const localY = Math.round(world.y - parentInfo.absY);
 
@@ -309,7 +322,9 @@ export function CanvasViewport() {
     ctx.translate(screenPosition.x, screenPosition.y);
     ctx.scale(camera.zoom, camera.zoom);
 
-    drawWidget(ctx, activeScreen.rootWidget, 0, 0, 0);
+    if (rootTree) {
+      drawWidget(ctx, rootTree, 0, 0, 0);
+    }
 
     ctx.restore();
 
@@ -656,7 +671,7 @@ export function CanvasViewport() {
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">Canvas</span>
           <div className="h-4 w-px bg-[#3c3c3c]" />
-          <span className="text-xs text-gray-400">480 × 320</span>
+          <span className="text-xs text-gray-400">{activeScreen.meta.width} × {activeScreen.meta.height}</span>
           <div className="h-4 w-px bg-[#3c3c3c]" />
           <span className="text-xs text-gray-500">
             Pan: Two-Finger Drag / Space / Middle Drag | Zoom: Pinch

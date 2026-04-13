@@ -1,10 +1,12 @@
 import {
   INSERTABLE_WIDGET_TYPES,
+  type EditableWidgetProperty,
   type EditableWidgetPropertyValue,
   type EditorAction,
   type EditorState,
   type Point,
   type ProjectSnapshot,
+  type ScreenModel,
   type WidgetNode,
   type WidgetType,
 } from "./types";
@@ -17,16 +19,61 @@ import { applyInteraction } from "./interaction";
 import { createWidgetNode } from "./widgets";
 import {
   canContainChildren,
+  cloneSubtreeWithNewIds,
   cloneProject,
-  collectWidgetIds,
-  findWidgetById,
-  findWidgetLocation,
   getActiveScreen,
-  insertChild,
-  removeChild,
+  getWidgetById,
+  insertWidget,
+  moveWidgetInProject,
+  removeSubtree,
   transformProjectWidgets,
-  updateActiveScreen,
 } from "./tree";
+
+function makeUniqueName(existingNames: string[], baseName: string): string {
+  const normalized = baseName.trim() || "Screen";
+  if (!existingNames.includes(normalized)) {
+    return normalized;
+  }
+
+  let counter = 2;
+  while (existingNames.includes(`${normalized} ${counter}`)) {
+    counter += 1;
+  }
+  return `${normalized} ${counter}`;
+}
+
+function getNextScreenId(project: ProjectSnapshot): string {
+  const usedIds = new Set(project.screens.map((screen) => screen.id));
+  let counter = 1;
+  while (usedIds.has(`screen-${counter}`)) {
+    counter += 1;
+  }
+  return `screen-${counter}`;
+}
+
+function getNextWidgetId(project: ProjectSnapshot, preferredPrefix: string): string {
+  const usedIds = new Set(Object.keys(project.widgetsById));
+  const safePrefix = preferredPrefix.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-") || "widget";
+  let counter = 1;
+  while (usedIds.has(`${safePrefix}-${counter}`)) {
+    counter += 1;
+  }
+  return `${safePrefix}-${counter}`;
+}
+
+function getScreenFallbackId(screens: ScreenModel[], removedScreenId: string): string {
+  if (screens.length === 0) {
+    return "";
+  }
+
+  const removedIndex = screens.findIndex((screen) => screen.id === removedScreenId);
+  if (removedIndex < 0) {
+    return screens[0].id;
+  }
+
+  const fallbackIndex = Math.max(0, Math.min(removedIndex, screens.length - 1));
+  return screens[fallbackIndex].id;
+}
 
 function commitProjectChange(
   state: EditorState,
@@ -73,6 +120,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, selectedWidgetIds: [] };
     case "setActiveScreen": {
       const screenId = action.screenId as string;
+      if (!state.project.screens.some((screen) => screen.id === screenId)) {
+        return state;
+      }
+
       return {
         ...state,
         project: {
@@ -81,6 +132,151 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         },
         selectedWidgetIds: [],
       };
+    }
+    case "createScreen": {
+      const nextScreenId = getNextScreenId(state.project);
+      const nextRootId = getNextWidgetId(state.project, "screen-root");
+      const existingNames = state.project.screens.map((screen) => screen.name);
+      const nextName = makeUniqueName(existingNames, `Screen${state.project.screens.length + 1}`);
+
+      const nextProject: ProjectSnapshot = {
+        ...state.project,
+        activeScreenId: nextScreenId,
+        screens: [
+          ...state.project.screens,
+          {
+            id: nextScreenId,
+            name: nextName,
+            rootNodeId: nextRootId,
+            meta: {
+              width: 480,
+              height: 320,
+              fill: "#1f2937",
+            },
+          },
+        ],
+        widgetsById: {
+          ...state.project.widgetsById,
+          [nextRootId]: {
+            id: nextRootId,
+            name: `${nextName} Root`,
+            type: "Screen",
+            parentId: null,
+            childrenIds: [],
+            x: 0,
+            y: 0,
+            width: 480,
+            height: 320,
+            fill: "#1f2937",
+            visible: true,
+          },
+        },
+      };
+
+      return commitProjectChange(state, nextProject, []);
+    }
+    case "renameScreen": {
+      const screenId = action.screenId as string;
+      const requestedName = (action.name as string | undefined)?.trim();
+      if (!screenId || !requestedName) {
+        return state;
+      }
+
+      const target = state.project.screens.find((screen) => screen.id === screenId);
+      if (!target) {
+        return state;
+      }
+
+      const namesWithoutTarget = state.project.screens.filter((screen) => screen.id !== screenId).map((screen) => screen.name);
+      const nextName = makeUniqueName(namesWithoutTarget, requestedName);
+      if (nextName === target.name) {
+        return state;
+      }
+
+      const nextProject: ProjectSnapshot = {
+        ...state.project,
+        screens: state.project.screens.map((screen) => (
+          screen.id === screenId
+            ? { ...screen, name: nextName }
+            : screen
+        )),
+      };
+
+      return commitProjectChange(state, nextProject);
+    }
+    case "duplicateScreen": {
+      const sourceScreenId = (action.screenId as string) || state.project.activeScreenId;
+      const sourceScreen = state.project.screens.find((screen) => screen.id === sourceScreenId);
+      if (!sourceScreen) {
+        return state;
+      }
+
+      const usedWidgetIds = new Set(Object.keys(state.project.widgetsById));
+      const subtreeClone = cloneSubtreeWithNewIds(state.project, sourceScreen.rootNodeId, (sourceId: string) => {
+        const source = state.project.widgetsById[sourceId];
+        const prefix = source?.type ? source.type.toLowerCase() : "widget";
+        let counter = 1;
+        let nextId = `${prefix}-${counter}`;
+        while (usedWidgetIds.has(nextId)) {
+          counter += 1;
+          nextId = `${prefix}-${counter}`;
+        }
+        usedWidgetIds.add(nextId);
+        return nextId;
+      });
+
+      if (!subtreeClone) {
+        return state;
+      }
+
+      const nextScreenId = getNextScreenId(state.project);
+      const namesWithoutNew = state.project.screens.map((screen) => screen.name);
+      const nextName = makeUniqueName(namesWithoutNew, `${sourceScreen.name} Copy`);
+
+      const nextProject: ProjectSnapshot = {
+        ...state.project,
+        activeScreenId: nextScreenId,
+        screens: [
+          ...state.project.screens,
+          {
+            id: nextScreenId,
+            name: nextName,
+            rootNodeId: subtreeClone.newRootId,
+            meta: {
+              ...sourceScreen.meta,
+            },
+          },
+        ],
+        widgetsById: {
+          ...state.project.widgetsById,
+          ...subtreeClone.widgets,
+        },
+      };
+
+      return commitProjectChange(state, nextProject, []);
+    }
+    case "deleteScreen": {
+      const screenId = (action.screenId as string) || state.project.activeScreenId;
+      if (state.project.screens.length <= 1) {
+        return state;
+      }
+
+      const target = state.project.screens.find((screen) => screen.id === screenId);
+      if (!target) {
+        return state;
+      }
+
+      const remainingScreens = state.project.screens.filter((screen) => screen.id !== screenId);
+      const fallbackId = getScreenFallbackId(remainingScreens, screenId);
+      const projectWithoutWidgets = removeSubtree(state.project, target.rootNodeId);
+
+      const nextProject: ProjectSnapshot = {
+        ...projectWithoutWidgets,
+        screens: remainingScreens,
+        activeScreenId: state.project.activeScreenId === screenId ? fallbackId : state.project.activeScreenId,
+      };
+
+      return commitProjectChange(state, nextProject, []);
     }
     case "beginInteraction": {
       const widgetIds = action.widgetIds as string[];
@@ -152,17 +348,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         return state;
       }
 
-      const activeScreen = getActiveScreen(state.project);
-      const parentNode = findWidgetById(activeScreen.rootWidget, parentId);
+      const parentNode = getWidgetById(state.project, parentId);
       if (!parentNode || !canContainChildren(parentNode.type)) {
         return state;
       }
 
       const widget = createWidgetNode(state.project, widgetType, Math.max(0, x), Math.max(0, y));
-      const nextProject = updateActiveScreen(state.project, (screen) => ({
-        ...screen,
-        rootWidget: insertChild(screen.rootWidget, parentId, widget),
-      }));
+      const nextProject = insertWidget(state.project, parentId, widget);
 
       return commitProjectChange(state, nextProject, [widget.id]);
     }
@@ -176,63 +368,27 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
 
       const activeScreen = getActiveScreen(state.project);
-      if (widgetId === activeScreen.rootWidget.id) {
+      if (widgetId === activeScreen.rootNodeId) {
         return state;
       }
 
-      const sourceLocation = findWidgetLocation(activeScreen.rootWidget, widgetId);
-      if (!sourceLocation?.parentId) {
+      const nextProject = moveWidgetInProject(state.project, widgetId, targetParentId, targetIndex);
+      if (JSON.stringify(nextProject) === JSON.stringify(state.project)) {
         return state;
       }
-
-      const sourceParentId = sourceLocation.parentId;
-      const sourceIndex = sourceLocation.index;
-
-      const sourceWidget = sourceLocation.widget;
-      const sourceWidgetDescendants = collectWidgetIds(sourceWidget);
-      if (sourceWidgetDescendants.has(targetParentId)) {
-        return state;
-      }
-
-      const targetParent = findWidgetById(activeScreen.rootWidget, targetParentId);
-      if (!targetParent || !canContainChildren(targetParent.type)) {
-        return state;
-      }
-
-      const normalizedTargetIndex = Math.max(0, Math.min(targetIndex, targetParent.children.length));
-      const sameParent = sourceParentId === targetParentId;
-      const adjustedTargetIndex = sameParent && sourceIndex < normalizedTargetIndex
-        ? normalizedTargetIndex - 1
-        : normalizedTargetIndex;
-
-      if (sameParent && sourceIndex === adjustedTargetIndex) {
-        return state;
-      }
-
-      const removedResult = removeChild(activeScreen.rootWidget, sourceParentId, sourceIndex);
-      if (!removedResult.removed) {
-        return state;
-      }
-
-      const insertedRoot = insertChild(removedResult.root, targetParentId, removedResult.removed, adjustedTargetIndex);
-      const nextProject = updateActiveScreen(state.project, (screen) => ({
-        ...screen,
-        rootWidget: insertedRoot,
-      }));
 
       return commitProjectChange(state, nextProject, [widgetId]);
     }
     case "updateWidgetProperty": {
       const widgetId = action.widgetId as string;
-      const propertyName = action.propertyName as unknown;
+      const propertyName = action.propertyName as EditableWidgetProperty;
       const value = action.value as EditableWidgetPropertyValue;
 
       if (!widgetId || !isEditableWidgetProperty(propertyName) || state.interaction) {
         return state;
       }
 
-      const activeScreen = getActiveScreen(state.project);
-      const targetWidget = findWidgetById(activeScreen.rootWidget, widgetId);
+      const targetWidget = getWidgetById(state.project, widgetId);
       if (!targetWidget || !canEditWidgetProperty(targetWidget.type, propertyName)) {
         return state;
       }
@@ -242,16 +398,73 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         return state;
       }
 
-      if ((targetWidget as Record<string, unknown>)[propertyName] === normalizedValue) {
+      if ((targetWidget as Record<EditableWidgetProperty, EditableWidgetPropertyValue | undefined>)[propertyName] === normalizedValue) {
         return state;
       }
 
-      const nextProject = transformProjectWidgets(state.project, [widgetId], (widget) => ({
+      let nextProject = transformProjectWidgets(state.project, [widgetId], (widget: WidgetNode) => ({
         ...widget,
         [propertyName]: normalizedValue,
-      } as WidgetNode));
+      }));
+
+      const activeScreen = getActiveScreen(nextProject);
+      if (widgetId === activeScreen.rootNodeId && (propertyName === "width" || propertyName === "height" || propertyName === "fill")) {
+        nextProject = {
+          ...nextProject,
+          screens: nextProject.screens.map((screen: ScreenModel) => (
+            screen.id === activeScreen.id
+              ? {
+                  ...screen,
+                  meta: {
+                    ...screen.meta,
+                    [propertyName]: normalizedValue,
+                  },
+                }
+              : screen
+          )),
+        };
+      }
 
       return commitProjectChange(state, nextProject, [widgetId]);
+    }
+    case "updateScreenMeta": {
+      const screenId = action.screenId as string;
+      const key = action.key as "width" | "height" | "fill";
+      const value = action.value as EditableWidgetPropertyValue;
+      const targetScreen = state.project.screens.find((screen) => screen.id === screenId);
+      if (!targetScreen) {
+        return state;
+      }
+
+      const propertyName = key as "width" | "height" | "fill";
+      const normalizedValue = normalizeEditableWidgetPropertyValue(propertyName, value);
+      if (normalizedValue === null) {
+        return state;
+      }
+
+      let nextProject: ProjectSnapshot = {
+        ...state.project,
+        screens: state.project.screens.map((screen) => (
+          screen.id === screenId
+            ? {
+                ...screen,
+                meta: {
+                  ...screen.meta,
+                  [key]: normalizedValue,
+                },
+              }
+            : screen
+        )),
+      };
+
+      if (key === "width" || key === "height" || key === "fill") {
+        nextProject = transformProjectWidgets(nextProject, [targetScreen.rootNodeId], (widget: WidgetNode) => ({
+          ...widget,
+          [key]: normalizedValue,
+        }));
+      }
+
+      return commitProjectChange(state, nextProject);
     }
     case "hydrateProject": {
       if (state.interaction) {

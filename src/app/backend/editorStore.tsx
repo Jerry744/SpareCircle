@@ -10,6 +10,10 @@ export type {
   EditorBackendValue,
 } from "./types";
 
+export type {
+  WidgetTreeNode,
+} from "./tree";
+
 export {
   EditorBackendProvider,
   useEditorBackend,
@@ -17,9 +21,12 @@ export {
 } from "./context";
 
 export {
+  buildWidgetTree,
   canContainChildren,
+  collectSubtreeIds,
   findWidgetById,
   flattenWidgetTree,
+  getWidgetById,
 } from "./tree";
 
 export {
