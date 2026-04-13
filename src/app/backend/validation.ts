@@ -1,6 +1,7 @@
 import {
   KNOWN_WIDGET_TYPES,
   WIDGET_EDITABLE_PROPERTIES,
+  type StyleToken,
   type EditableWidgetProperty,
   type EditableWidgetPropertyValue,
   type ProjectSnapshot,
@@ -9,6 +10,7 @@ import {
   type WidgetNode,
   type WidgetType,
 } from "./types";
+import { MATERIAL_COLOR_PRESET } from "../constants/designTokens";
 
 type LegacyWidgetNode = Omit<WidgetNode, "parentId" | "childrenIds"> & { children: LegacyWidgetNode[] };
 
@@ -44,8 +46,76 @@ export function isEditableWidgetProperty(value: unknown): value is EditableWidge
     || value === "visible";
 }
 
-function isValidColorString(value: string): boolean {
+export function isValidHexColorString(value: string): boolean {
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim());
+}
+
+function isValidColorString(value: string): boolean {
+  return isValidHexColorString(value);
+}
+
+export function getDefaultWidgetFill(widgetType: WidgetType): string {
+  if (widgetType === "Screen") {
+    return "#1f2937";
+  }
+  if (widgetType === "Container") {
+    return "#252525";
+  }
+  if (widgetType === "Panel") {
+    return "#111827";
+  }
+  if (widgetType === "Button") {
+    return "#3b82f6";
+  }
+  if (widgetType === "Image") {
+    return "#374151";
+  }
+
+  return "#1e1e1e";
+}
+
+export function getDefaultWidgetTextColor(widgetType: WidgetType): string {
+  if (widgetType === "Label") {
+    return "#f3f4f6";
+  }
+
+  if (widgetType === "Button") {
+    return "#ffffff";
+  }
+
+  return "#ffffff";
+}
+
+export function getStyleTokenById(project: ProjectSnapshot, tokenId: string | undefined): StyleToken | null {
+  if (!tokenId) {
+    return null;
+  }
+
+  return project.styleTokens.find((token) => token.id === tokenId) ?? null;
+}
+
+export function getWidgetStyleTokenId(widget: Pick<WidgetNode, "fillTokenId" | "textColorTokenId">, propertyName: "fill" | "textColor") {
+  return propertyName === "fill" ? widget.fillTokenId : widget.textColorTokenId;
+}
+
+export function resolveWidgetColor(
+  project: ProjectSnapshot,
+  widget: Pick<WidgetNode, "type" | "fill" | "fillTokenId" | "textColor" | "textColorTokenId">,
+  propertyName: "fill" | "textColor",
+): string {
+  const localValue = propertyName === "fill" ? widget.fill : widget.textColor;
+  if (localValue && isValidHexColorString(localValue)) {
+    return localValue;
+  }
+
+  const token = getStyleTokenById(project, propertyName === "fill" ? widget.fillTokenId : widget.textColorTokenId);
+  if (token) {
+    return token.value;
+  }
+
+  return propertyName === "fill"
+    ? getDefaultWidgetFill(widget.type)
+    : getDefaultWidgetTextColor(widget.type);
 }
 
 export function normalizeEditableWidgetPropertyValue(
@@ -146,7 +216,9 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
 
   const maybeText = input.text;
   const maybeFill = input.fill;
+  const maybeFillTokenId = input.fillTokenId;
   const maybeTextColor = input.textColor;
+  const maybeTextColorTokenId = input.textColorTokenId;
   const maybeRadius = input.radius;
   const maybeVisible = input.visible;
   const maybeLocked = input.locked;
@@ -157,8 +229,14 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
   if (maybeFill !== undefined && (typeof maybeFill !== "string" || !isValidColorString(maybeFill))) {
     return { ok: false, error: `${path}.fill must be a valid hex color when provided` };
   }
+  if (maybeFillTokenId !== undefined && typeof maybeFillTokenId !== "string") {
+    return { ok: false, error: `${path}.fillTokenId must be a string when provided` };
+  }
   if (maybeTextColor !== undefined && (typeof maybeTextColor !== "string" || !isValidColorString(maybeTextColor))) {
     return { ok: false, error: `${path}.textColor must be a valid hex color when provided` };
+  }
+  if (maybeTextColorTokenId !== undefined && typeof maybeTextColorTokenId !== "string") {
+    return { ok: false, error: `${path}.textColorTokenId must be a string when provided` };
   }
   if (maybeRadius !== undefined && (typeof maybeRadius !== "number" || !Number.isFinite(maybeRadius))) {
     return { ok: false, error: `${path}.radius must be a finite number when provided` };
@@ -184,12 +262,78 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
       height,
       text: maybeText,
       fill: maybeFill,
+      fillTokenId: maybeFillTokenId,
       textColor: maybeTextColor,
+      textColorTokenId: maybeTextColorTokenId,
       radius: maybeRadius,
       visible: maybeVisible,
       locked: maybeLocked,
     },
   };
+}
+
+function parseStyleToken(input: unknown, path: string): { ok: true; token: StyleToken } | { ok: false; error: string } {
+  if (!isRecord(input)) {
+    return { ok: false, error: `${path} must be an object` };
+  }
+
+  const { id, name, type, value } = input;
+  if (typeof id !== "string" || !id.trim()) {
+    return { ok: false, error: `${path}.id must be a non-empty string` };
+  }
+  if (typeof name !== "string" || !name.trim()) {
+    return { ok: false, error: `${path}.name must be a non-empty string` };
+  }
+  if (type !== "color") {
+    return { ok: false, error: `${path}.type is invalid` };
+  }
+  if (typeof value !== "string" || !isValidHexColorString(value)) {
+    return { ok: false, error: `${path}.value must be a valid hex color` };
+  }
+
+  return {
+    ok: true,
+    token: {
+      id,
+      name,
+      type,
+      value: value.trim(),
+    },
+  };
+}
+
+function parseStyleTokens(input: unknown): { ok: true; tokens: StyleToken[] } | { ok: false; error: string } {
+  if (input === undefined) {
+    return { ok: true, tokens: [] };
+  }
+
+  if (!Array.isArray(input)) {
+    return { ok: false, error: "Project.styleTokens must be an array" };
+  }
+
+  const tokens: StyleToken[] = [];
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+
+  for (let index = 0; index < input.length; index += 1) {
+    const parsed = parseStyleToken(input[index], `Project.styleTokens[${index}]`);
+    if (!parsed.ok) {
+      return parsed;
+    }
+
+    if (seenIds.has(parsed.token.id)) {
+      return { ok: false, error: `Project.styleTokens[${index}].id must be unique` };
+    }
+    if (seenNames.has(parsed.token.name)) {
+      return { ok: false, error: `Project.styleTokens[${index}].name must be unique` };
+    }
+
+    seenIds.add(parsed.token.id);
+    seenNames.add(parsed.token.name);
+    tokens.push(parsed.token);
+  }
+
+  return { ok: true, tokens };
 }
 
 function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSnapshot } | { ok: false; error: string } {
@@ -198,6 +342,10 @@ function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSna
   }
 
   const { screens, activeScreenId, widgetsById } = input;
+  const styleTokensResult = parseStyleTokens(input.styleTokens);
+  if (!styleTokensResult.ok) {
+    return styleTokensResult;
+  }
   if (!Array.isArray(screens) || screens.length === 0) {
     return { ok: false, error: "Project.screens must be a non-empty array" };
   }
@@ -220,6 +368,15 @@ function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSna
     }
 
     parsedWidgets[widgetId] = parsedWidget.widget;
+  }
+  const tokenIds = new Set(styleTokensResult.tokens.map((token) => token.id));
+  for (const widget of Object.values(parsedWidgets)) {
+    if (widget.fillTokenId && !tokenIds.has(widget.fillTokenId)) {
+      return { ok: false, error: `Widget ${widget.id}.fillTokenId does not exist in styleTokens` };
+    }
+    if (widget.textColorTokenId && !tokenIds.has(widget.textColorTokenId)) {
+      return { ok: false, error: `Widget ${widget.id}.textColorTokenId does not exist in styleTokens` };
+    }
   }
 
   const parsedScreens: ScreenModel[] = [];
@@ -287,6 +444,7 @@ function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSna
       screens: parsedScreens,
       activeScreenId,
       widgetsById: parsedWidgets,
+      styleTokens: styleTokensResult.tokens,
     },
   };
 }
@@ -462,6 +620,7 @@ function parseLegacyProject(input: unknown): { ok: true; project: ProjectSnapsho
       screens,
       activeScreenId,
       widgetsById,
+      styleTokens: [],
     },
   };
 }
@@ -590,5 +749,11 @@ export function createInitialProject(): ProjectSnapshot {
       },
     ],
     widgetsById,
+    styleTokens: MATERIAL_COLOR_PRESET.map((token, index) => ({
+      id: `material-${index + 1}`,
+      name: token.name,
+      type: "color",
+      value: token.value,
+    })),
   };
 }

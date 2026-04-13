@@ -1,5 +1,13 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Button } from "./ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import {
   collectSubtreeIds,
   getActiveScreenFromProject,
@@ -9,6 +17,11 @@ import {
   type EditableWidgetPropertyValue,
   type WidgetNode,
 } from "../backend/editorStore";
+import type { ProjectSnapshot } from "../backend/types";
+import {
+  getWidgetStyleTokenId,
+  resolveWidgetColor,
+} from "../backend/validation";
 
 type InspectorFieldType = "number" | "text" | "color" | "boolean";
 
@@ -25,6 +38,8 @@ interface InspectorField {
 
 type DraftMap = Partial<Record<EditableWidgetProperty, string | boolean>>;
 type ErrorMap = Partial<Record<EditableWidgetProperty, string>>;
+
+type ColorPropertyKey = Extract<EditableWidgetProperty, "fill" | "textColor">;
 
 const FIELD_CONFIG: Record<EditableWidgetProperty, InspectorField> = {
   x: { key: "x", label: "X", type: "number", section: "position", unit: "px", min: -4096, max: 4096 },
@@ -48,36 +63,7 @@ const WIDGET_FIELD_SCHEMA: Record<WidgetNode["type"], EditableWidgetProperty[]> 
   Image: ["x", "y", "width", "height", "fill", "visible"],
 };
 
-function getDefaultFill(widgetType: WidgetNode["type"]): string {
-  if (widgetType === "Screen") {
-    return "#1f2937";
-  }
-  if (widgetType === "Container") {
-    return "#252525";
-  }
-  if (widgetType === "Panel") {
-    return "#111827";
-  }
-  if (widgetType === "Button") {
-    return "#3b82f6";
-  }
-  if (widgetType === "Image") {
-    return "#374151";
-  }
-  return "#1e1e1e";
-}
-
-function getDefaultTextColor(widgetType: WidgetNode["type"]): string {
-  if (widgetType === "Label") {
-    return "#f3f4f6";
-  }
-  if (widgetType === "Button") {
-    return "#ffffff";
-  }
-  return "#ffffff";
-}
-
-function getWidgetPropertyDraftValue(widget: WidgetNode, key: EditableWidgetProperty): string | boolean {
+function getWidgetPropertyDraftValue(project: ProjectSnapshot, widget: WidgetNode, key: EditableWidgetProperty): string | boolean {
   switch (key) {
     case "x":
       return String(widget.x);
@@ -90,9 +76,9 @@ function getWidgetPropertyDraftValue(widget: WidgetNode, key: EditableWidgetProp
     case "text":
       return widget.text ?? "";
     case "fill":
-      return widget.fill ?? getDefaultFill(widget.type);
+      return resolveWidgetColor(project, widget, "fill");
     case "textColor":
-      return widget.textColor ?? getDefaultTextColor(widget.type);
+      return resolveWidgetColor(project, widget, "textColor");
     case "visible":
       return widget.visible ?? true;
     default:
@@ -100,9 +86,9 @@ function getWidgetPropertyDraftValue(widget: WidgetNode, key: EditableWidgetProp
   }
 }
 
-function buildDrafts(widget: WidgetNode, fields: InspectorField[]): DraftMap {
+function buildDrafts(project: ProjectSnapshot, widget: WidgetNode, fields: InspectorField[]): DraftMap {
   return fields.reduce<DraftMap>((acc, field) => {
-    acc[field.key] = getWidgetPropertyDraftValue(widget, field.key);
+    acc[field.key] = getWidgetPropertyDraftValue(project, widget, field.key);
     return acc;
   }, {});
 }
@@ -182,7 +168,7 @@ export function InspectorPanel() {
       project,
       selectedWidgetIds,
     },
-    actions: { updateWidgetProperty },
+    actions: { updateWidgetProperty, assignWidgetStyleToken, clearWidgetProperty },
   } = useEditorBackend();
 
   const activeScreen = getActiveScreenFromProject(project);
@@ -216,9 +202,9 @@ export function InspectorPanel() {
       return;
     }
 
-    setDrafts(buildDrafts(selectedWidget, activeFields));
+    setDrafts(buildDrafts(project, selectedWidget, activeFields));
     setErrors({});
-  }, [selectedWidget, activeFields]);
+  }, [project, selectedWidget, activeFields]);
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -236,9 +222,15 @@ export function InspectorPanel() {
       return;
     }
 
+    if (field.key === "fill" || field.key === "textColor") {
+      clearWidgetProperty(selectedWidget.id, field.key);
+      setErrors((prev) => ({ ...prev, [field.key]: undefined }));
+      return;
+    }
+
     setDrafts((prev) => ({
       ...prev,
-      [field.key]: getWidgetPropertyDraftValue(selectedWidget, field.key),
+      [field.key]: getWidgetPropertyDraftValue(project, selectedWidget, field.key),
     }));
     setErrors((prev) => ({ ...prev, [field.key]: undefined }));
   };
@@ -262,7 +254,7 @@ export function InspectorPanel() {
     setDrafts((prev) => ({ ...prev, [field.key]: result.display }));
     setErrors((prev) => ({ ...prev, [field.key]: undefined }));
 
-    const currentValue = getWidgetPropertyDraftValue(selectedWidget, field.key);
+    const currentValue = getWidgetPropertyDraftValue(project, selectedWidget, field.key);
     if (currentValue !== result.display) {
       updateWidgetProperty(selectedWidget.id, field.key, result.normalized);
     }
@@ -361,9 +353,13 @@ export function InspectorPanel() {
               key={field.key}
               label={field.label}
               value={String(drafts[field.key] ?? "")}
+              tokenId={getWidgetStyleTokenId(selectedWidget, field.key as ColorPropertyKey) ?? null}
+              tokenOptions={project.styleTokens}
               error={errors[field.key]}
               onChange={(nextValue) => setDraft(field, nextValue)}
               onBlur={() => commitField(field)}
+              onTokenChange={(tokenId) => assignWidgetStyleToken(selectedWidget.id, field.key as ColorPropertyKey, tokenId)}
+              onClearOverride={() => clearWidgetProperty(selectedWidget.id, field.key as ColorPropertyKey)}
               onKeyDown={(event) => handleInputKeyDown(event, field)}
             />
           ))}
@@ -482,20 +478,30 @@ function PropertyRow({
 function ColorProperty({
   label,
   value,
+  tokenId,
+  tokenOptions,
   error,
   onChange,
   onBlur,
+  onTokenChange,
+  onClearOverride,
   onKeyDown,
 }: {
   label: string;
   value: string;
+  tokenId: string | null;
+  tokenOptions: ProjectSnapshot["styleTokens"];
   error?: string;
   onChange: (value: string) => void;
   onBlur: () => void;
+  onTokenChange: (tokenId: string | null) => void;
+  onClearOverride: () => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 }) {
+  const resolvedToken = tokenId ? tokenOptions.find((token) => token.id === tokenId) ?? null : null;
+
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <label className="text-xs text-gray-400">{label}</label>
         <div className="flex items-center gap-2">
@@ -515,6 +521,36 @@ function ColorProperty({
             className="w-24 px-2 py-1 bg-[#252525] border border-[#3c3c3c] rounded text-xs focus:border-[#5b9dd9] outline-none text-gray-200"
           />
         </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Select value={tokenId ?? "__none__"} onValueChange={(nextValue) => onTokenChange(nextValue === "__none__" ? null : nextValue)}>
+          <SelectTrigger className="h-8 w-full bg-[#252525] border-[#3c3c3c] text-[11px] text-gray-300">
+            <SelectValue placeholder="Use local value">
+              {resolvedToken ? (
+                <span className="flex items-center gap-2">
+                  <span className="inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: resolvedToken.value }} />
+                  <span>{resolvedToken.name}</span>
+                </span>
+              ) : (
+                <span>Use local value</span>
+              )}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Use local value</SelectItem>
+            {tokenOptions.map((token) => (
+              <SelectItem key={token.id} value={token.id}>
+                <span className="flex items-center gap-2">
+                  <span className="inline-flex h-2.5 w-2.5 rounded-full border border-white/20" style={{ backgroundColor: token.value }} />
+                  <span>{token.name}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-[11px]" onClick={onClearOverride}>
+          Reset
+        </Button>
       </div>
       {error ? <div className="text-[11px] text-rose-400">{error}</div> : null}
     </div>

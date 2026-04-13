@@ -3,6 +3,15 @@ export type WidgetType = "Screen" | "Container" | "Panel" | "Label" | "Button" |
 export type EditableWidgetProperty = "x" | "y" | "width" | "height" | "text" | "fill" | "textColor" | "visible";
 export type EditableWidgetPropertyValue = string | number | boolean;
 
+export type StyleTokenType = "color";
+
+export interface StyleToken {
+  id: string;
+  name: string;
+  type: StyleTokenType;
+  value: string;
+}
+
 export interface WidgetNode {
   id: string;
   name: string;
@@ -15,7 +24,9 @@ export interface WidgetNode {
   height: number;
   text?: string;
   fill?: string;
+  fillTokenId?: string;
   textColor?: string;
+  textColorTokenId?: string;
   radius?: number;
   visible?: boolean;
   locked?: boolean;
@@ -38,9 +49,11 @@ export interface ProjectSnapshot {
   screens: ScreenModel[];
   activeScreenId: string;
   widgetsById: Record<string, WidgetNode>;
+  styleTokens: StyleToken[];
 }
 
 export type HydrateProjectResult = { ok: true } | { ok: false; error: string };
+export type ExportLvglResult = { ok: true; fileName: string } | { ok: false; error: string };
 
 export interface HistoryState {
   past: ProjectSnapshot[];
@@ -89,9 +102,15 @@ export interface EditorBackendValue {
       propertyName: EditableWidgetProperty,
       value: EditableWidgetPropertyValue,
     ) => void;
+    clearWidgetProperty: (widgetId: string, propertyName: "fill" | "textColor") => void;
+    createStyleToken: (name: string, value: string) => void;
+    updateStyleToken: (tokenId: string, updates: { name?: string; value?: string }) => void;
+    deleteStyleToken: (tokenId: string) => void;
+    assignWidgetStyleToken: (widgetId: string, propertyName: "fill" | "textColor", tokenId: string | null) => void;
     updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) => void;
     serializeProject: () => string;
     hydrateProject: (serializedProject: string) => HydrateProjectResult;
+    exportLvglC: () => Promise<ExportLvglResult>;
     undo: () => void;
     redo: () => void;
   };

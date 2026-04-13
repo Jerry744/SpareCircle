@@ -12,10 +12,12 @@ import {
 } from "./validation";
 import { editorReducer } from "./reducer";
 import { getActiveScreen } from "./tree";
+import { generateLvglZip } from "./codegen/generator";
 import type {
   EditableWidgetProperty,
   EditableWidgetPropertyValue,
   EditorBackendValue,
+  ExportLvglResult,
   HydrateProjectResult,
   Point,
   ProjectSnapshot,
@@ -55,6 +57,14 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "moveWidget", widgetId, targetParentId, targetIndex }),
       updateWidgetProperty: (widgetId: string, propertyName: EditableWidgetProperty, value: EditableWidgetPropertyValue) =>
         dispatch({ type: "updateWidgetProperty", widgetId, propertyName, value }),
+      clearWidgetProperty: (widgetId: string, propertyName: "fill" | "textColor") =>
+        dispatch({ type: "clearWidgetProperty", widgetId, propertyName }),
+      createStyleToken: (name: string, value: string) => dispatch({ type: "createStyleToken", name, value }),
+      updateStyleToken: (tokenId: string, updates: { name?: string; value?: string }) =>
+        dispatch({ type: "updateStyleToken", tokenId, updates }),
+      deleteStyleToken: (tokenId: string) => dispatch({ type: "deleteStyleToken", tokenId }),
+      assignWidgetStyleToken: (widgetId: string, propertyName: "fill" | "textColor", tokenId: string | null) =>
+        dispatch({ type: "assignWidgetStyleToken", widgetId, propertyName, tokenId }),
       updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) =>
         dispatch({ type: "updateScreenMeta", screenId, key, value }),
       serializeProject: () => serializeProjectSnapshot(state.project),
@@ -66,6 +76,21 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
 
         dispatch({ type: "hydrateProject", project: result.project });
         return { ok: true };
+      },
+      exportLvglC: async (): Promise<ExportLvglResult> => {
+        try {
+          const zipBlob = await generateLvglZip(state.project);
+          const url = URL.createObjectURL(zipBlob);
+          const anchor = document.createElement("a");
+          anchor.href = url;
+          anchor.download = "sparecircle-lvgl-ui.zip";
+          anchor.click();
+          URL.revokeObjectURL(url);
+
+          return { ok: true, fileName: "sparecircle-lvgl-ui.zip" };
+        } catch {
+          return { ok: false, error: "Failed to export LVGL C package" };
+        }
       },
       undo: () => dispatch({ type: "undo" }),
       redo: () => dispatch({ type: "redo" }),

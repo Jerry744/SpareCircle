@@ -82,4 +82,83 @@ describe("editorReducer screen lifecycle", () => {
     expect(next.selectedWidgetIds).toEqual([]);
     expect(next.project.activeScreenId).toBe(targetScreenId);
   });
+
+  it("assigns style token to widget and keeps local override optional", () => {
+    const state = createState();
+    const tokenId = state.project.styleTokens[0]?.id;
+    expect(tokenId).toBeDefined();
+
+    const assigned = editorReducer(state, {
+      type: "assignWidgetStyleToken",
+      widgetId: "Button1",
+      propertyName: "fill",
+      tokenId,
+    });
+
+    expect(assigned.project.widgetsById.Button1.fillTokenId).toBe(tokenId);
+    expect(assigned.project.widgetsById.Button1.fill).toBeUndefined();
+
+    const overridden = editorReducer(assigned, {
+      type: "updateWidgetProperty",
+      widgetId: "Button1",
+      propertyName: "fill",
+      value: "#112233",
+    });
+    expect(overridden.project.widgetsById.Button1.fill).toBe("#112233");
+    expect(overridden.project.widgetsById.Button1.fillTokenId).toBe(tokenId);
+  });
+
+  it("clears local color override without removing token binding", () => {
+    const state = createState();
+    const tokenId = state.project.styleTokens[0]?.id;
+    const assigned = editorReducer(state, {
+      type: "assignWidgetStyleToken",
+      widgetId: "Button1",
+      propertyName: "fill",
+      tokenId,
+    });
+    const overridden = editorReducer(assigned, {
+      type: "updateWidgetProperty",
+      widgetId: "Button1",
+      propertyName: "fill",
+      value: "#223344",
+    });
+
+    const cleared = editorReducer(overridden, {
+      type: "clearWidgetProperty",
+      widgetId: "Button1",
+      propertyName: "fill",
+    });
+
+    expect(cleared.project.widgetsById.Button1.fill).toBeUndefined();
+    expect(cleared.project.widgetsById.Button1.fillTokenId).toBe(tokenId);
+  });
+
+  it("deletes style token and removes widget token references", () => {
+    const state = createState();
+    const tokenId = state.project.styleTokens[0]?.id;
+    const withRefs = editorReducer(
+      editorReducer(state, {
+        type: "assignWidgetStyleToken",
+        widgetId: "Button1",
+        propertyName: "fill",
+        tokenId,
+      }),
+      {
+        type: "assignWidgetStyleToken",
+        widgetId: "TempLabel",
+        propertyName: "textColor",
+        tokenId,
+      },
+    );
+
+    const deleted = editorReducer(withRefs, {
+      type: "deleteStyleToken",
+      tokenId,
+    });
+
+    expect(deleted.project.styleTokens.some((token) => token.id === tokenId)).toBe(false);
+    expect(deleted.project.widgetsById.Button1.fillTokenId).toBeUndefined();
+    expect(deleted.project.widgetsById.TempLabel.textColorTokenId).toBeUndefined();
+  });
 });

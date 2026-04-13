@@ -10,6 +10,7 @@ import {
   type Point,
   type WidgetTreeNode,
 } from "../backend/editorStore";
+import { resolveWidgetColor } from "../backend/validation";
 
 interface Camera {
   x: number;
@@ -152,7 +153,7 @@ export function CanvasViewport() {
 
     const isSelected = selectedWidgetIds.includes(widget.id);
     const radius = widget.radius ?? (widget.type === "Button" ? 10 : widget.type === "Panel" ? 14 : 0);
-    const fill = widget.fill ?? (widget.type === "Screen" ? "#1f2937" : widget.type === "Container" ? "#252525" : widget.type === "Button" ? "#3b82f6" : widget.type === "Panel" ? "#111827" : "transparent");
+    const fill = resolveWidgetColor(project, widget, "fill");
     const stroke = widget.type === "Label" ? "transparent" : "rgba(255,255,255,0.08)";
 
     ctx.save();
@@ -179,7 +180,7 @@ export function CanvasViewport() {
     }
 
     if (widget.type === "Label") {
-      ctx.fillStyle = widget.textColor ?? "#f3f4f6";
+      ctx.fillStyle = resolveWidgetColor(project, widget, "textColor");
       ctx.font = depth > 1 ? "13px sans-serif" : "16px sans-serif";
       ctx.textBaseline = "middle";
       ctx.fillText(widget.text ?? widget.name, absX, absY + widget.height / 2);
@@ -194,7 +195,7 @@ export function CanvasViewport() {
       ctx.textBaseline = "middle";
       ctx.fillText("Image", absX + widget.width / 2, absY + widget.height / 2);
     } else if (widget.type === "Button") {
-      ctx.fillStyle = widget.textColor ?? "#ffffff";
+      ctx.fillStyle = resolveWidgetColor(project, widget, "textColor");
       ctx.font = "600 13px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";

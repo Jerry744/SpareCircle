@@ -6,6 +6,7 @@ export type {
   ScreenModel,
   ProjectSnapshot,
   HydrateProjectResult,
+  ExportLvglResult,
   Point,
   EditorBackendValue,
 } from "./types";

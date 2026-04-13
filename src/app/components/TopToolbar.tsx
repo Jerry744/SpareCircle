@@ -10,19 +10,24 @@ import {
   Maximize2,
   Sun,
   Moon,
-  Monitor
+  Monitor,
+  Palette
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useEditorBackend } from "../backend/editorStore";
+import { StyleTokensDialog } from "./StyleTokensDialog";
 
 export function TopToolbar() {
   const [importError, setImportError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [tokensOpen, setTokensOpen] = useState(false);
   const {
     state: {
       history,
       interaction,
+      project,
     },
-    actions: { undo, redo, serializeProject, hydrateProject },
+    actions: { undo, redo, serializeProject, hydrateProject, exportLvglC },
   } = useEditorBackend();
 
   const canUndo = history.past.length > 0 && !interaction;
@@ -67,6 +72,7 @@ export function TopToolbar() {
 
     URL.revokeObjectURL(url);
     setImportError(null);
+    setExportError(null);
   };
 
   const handleOpen = () => {
@@ -81,6 +87,18 @@ export function TopToolbar() {
       return;
     }
 
+    setImportError(null);
+    setExportError(null);
+  };
+
+  const handleExport = async () => {
+    const result = await exportLvglC();
+    if (!result.ok) {
+      setExportError(result.error);
+      return;
+    }
+
+    setExportError(null);
     setImportError(null);
   };
 
@@ -119,6 +137,13 @@ export function TopToolbar() {
           <Grid size={16} />
           <span className="text-sm">Grid</span>
         </button>
+        <button
+          onClick={() => setTokensOpen(true)}
+          className="px-3 py-1.5 hover:bg-[#3c3c3c] rounded flex items-center gap-2 transition-colors text-gray-300"
+        >
+          <Palette size={16} />
+          <span className="text-sm">Style Tokens ({project.styleTokens.length})</span>
+        </button>
         <button className="px-3 py-1.5 hover:bg-[#3c3c3c] rounded flex items-center gap-2 transition-colors text-gray-300">
           <Maximize2 size={16} />
         </button>
@@ -156,7 +181,12 @@ export function TopToolbar() {
           <Play size={16} />
           <span className="text-sm">Simulate</span>
         </button>
-        <button className="px-3 py-1.5 bg-[#4caf50] hover:bg-[#5cb860] rounded flex items-center gap-2 transition-colors text-white">
+        <button
+          onClick={() => {
+            void handleExport();
+          }}
+          className="px-3 py-1.5 bg-[#4caf50] hover:bg-[#5cb860] rounded flex items-center gap-2 transition-colors text-white"
+        >
           <Download size={16} />
           <span className="text-sm">Export</span>
         </button>
@@ -170,6 +200,12 @@ export function TopToolbar() {
           Open failed: {importError}
         </div>
       ) : null}
+      {!importError && exportError ? (
+        <div className="absolute right-3 -bottom-7 text-[11px] text-rose-400 bg-[#2c2c2c] px-2 py-1 rounded border border-[#4b1f27]">
+          Export failed: {exportError}
+        </div>
+      ) : null}
+      <StyleTokensDialog open={tokensOpen} onOpenChange={setTokensOpen} />
     </div>
   );
 }

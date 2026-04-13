@@ -7,12 +7,14 @@ import {
   type Point,
   type ProjectSnapshot,
   type ScreenModel,
+  type StyleToken,
   type WidgetNode,
   type WidgetType,
 } from "./types";
 import {
   canEditWidgetProperty,
   isEditableWidgetProperty,
+  isValidHexColorString,
   normalizeEditableWidgetPropertyValue,
 } from "./validation";
 import { applyInteraction } from "./interaction";
@@ -40,6 +42,76 @@ function makeUniqueName(existingNames: string[], baseName: string): string {
     counter += 1;
   }
   return `${normalized} ${counter}`;
+}
+
+function makeUniqueTokenName(existingNames: string[], baseName: string): string {
+  const normalized = baseName.trim() || "Token";
+  if (!existingNames.includes(normalized)) {
+    return normalized;
+  }
+
+  let counter = 2;
+  while (existingNames.includes(`${normalized} ${counter}`)) {
+    counter += 1;
+  }
+
+  return `${normalized} ${counter}`;
+}
+
+function getNextStyleTokenId(project: ProjectSnapshot): string {
+  const usedIds = new Set(project.styleTokens.map((token) => token.id));
+  let counter = 1;
+  while (usedIds.has(`style-token-${counter}`)) {
+    counter += 1;
+  }
+  return `style-token-${counter}`;
+}
+
+function sanitizeStyleTokenValue(value: string): string | null {
+  const normalized = value.trim();
+  return isValidHexColorString(normalized) ? normalized : null;
+}
+
+function updateWidgetTokenReference(
+  widget: WidgetNode,
+  propertyName: "fill" | "textColor",
+  tokenId: string | null,
+): WidgetNode {
+  if (propertyName === "fill") {
+    return {
+      ...widget,
+      fillTokenId: tokenId ?? undefined,
+      fill: tokenId ? undefined : widget.fill,
+    };
+  }
+
+  return {
+    ...widget,
+    textColorTokenId: tokenId ?? undefined,
+    textColor: tokenId ? undefined : widget.textColor,
+  };
+}
+
+function clearWidgetColorOverride(widget: WidgetNode, propertyName: "fill" | "textColor"): WidgetNode {
+  if (propertyName === "fill") {
+    return {
+      ...widget,
+      fill: undefined,
+    };
+  }
+
+  return {
+    ...widget,
+    textColor: undefined,
+  };
+}
+
+function removeTokenReferences(project: ProjectSnapshot, tokenId: string): ProjectSnapshot {
+  return transformProjectWidgets(project, Object.keys(project.widgetsById), (widget: WidgetNode) => ({
+    ...widget,
+    fillTokenId: widget.fillTokenId === tokenId ? undefined : widget.fillTokenId,
+    textColorTokenId: widget.textColorTokenId === tokenId ? undefined : widget.textColorTokenId,
+  }));
 }
 
 function getNextScreenId(project: ProjectSnapshot): string {
@@ -423,6 +495,127 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
               : screen
           )),
         };
+      }
+
+      return commitProjectChange(state, nextProject, [widgetId]);
+    }
+    case "clearWidgetProperty": {
+      const widgetId = action.widgetId as string;
+      const propertyName = action.propertyName as "fill" | "textColor";
+
+      if (!widgetId || (propertyName !== "fill" && propertyName !== "textColor")) {
+        return state;
+      }
+
+      const targetWidget = getWidgetById(state.project, widgetId);
+      if (!targetWidget) {
+        return state;
+      }
+
+      const nextProject = transformProjectWidgets(state.project, [widgetId], (widget: WidgetNode) => clearWidgetColorOverride(widget, propertyName));
+      if (JSON.stringify(nextProject) === JSON.stringify(state.project)) {
+        return state;
+      }
+
+      return commitProjectChange(state, nextProject, [widgetId]);
+    }
+    case "createStyleToken": {
+      const name = (action.name as string | undefined)?.trim();
+      const value = action.value as string;
+      const normalizedValue = sanitizeStyleTokenValue(value);
+
+      if (!name || !normalizedValue) {
+        return state;
+      }
+
+      const nextToken: StyleToken = {
+        id: getNextStyleTokenId(state.project),
+        name: makeUniqueTokenName(state.project.styleTokens.map((token) => token.name), name),
+        type: "color",
+        value: normalizedValue,
+      };
+
+      return commitProjectChange(state, {
+        ...state.project,
+        styleTokens: [...state.project.styleTokens, nextToken],
+      });
+    }
+    case "updateStyleToken": {
+      const tokenId = action.tokenId as string;
+      const updates = (action.updates as { name?: string; value?: string }) ?? {};
+      const tokenIndex = state.project.styleTokens.findIndex((token) => token.id === tokenId);
+      if (tokenIndex < 0) {
+        return state;
+      }
+
+      const current = state.project.styleTokens[tokenIndex];
+      const nextName = updates.name !== undefined
+        ? makeUniqueTokenName(
+            state.project.styleTokens.filter((token) => token.id !== tokenId).map((token) => token.name),
+            updates.name,
+          )
+        : current.name;
+      const nextValue = updates.value !== undefined
+        ? sanitizeStyleTokenValue(updates.value)
+        : current.value;
+
+      if (!nextValue) {
+        return state;
+      }
+
+      if (nextName === current.name && nextValue === current.value) {
+        return state;
+      }
+
+      const nextTokens = [...state.project.styleTokens];
+      nextTokens[tokenIndex] = {
+        ...current,
+        name: nextName,
+        value: nextValue,
+      };
+
+      return commitProjectChange(state, {
+        ...state.project,
+        styleTokens: nextTokens,
+      });
+    }
+    case "deleteStyleToken": {
+      const tokenId = action.tokenId as string;
+      if (!tokenId || !state.project.styleTokens.some((token) => token.id === tokenId)) {
+        return state;
+      }
+
+      const nextProject = removeTokenReferences(
+        {
+          ...state.project,
+          styleTokens: state.project.styleTokens.filter((token) => token.id !== tokenId),
+        },
+        tokenId,
+      );
+
+      return commitProjectChange(state, nextProject);
+    }
+    case "assignWidgetStyleToken": {
+      const widgetId = action.widgetId as string;
+      const propertyName = action.propertyName as "fill" | "textColor";
+      const tokenId = action.tokenId as string | null;
+
+      if (!widgetId || (propertyName !== "fill" && propertyName !== "textColor")) {
+        return state;
+      }
+
+      if (tokenId && !state.project.styleTokens.some((token) => token.id === tokenId)) {
+        return state;
+      }
+
+      const targetWidget = getWidgetById(state.project, widgetId);
+      if (!targetWidget) {
+        return state;
+      }
+
+      const nextProject = transformProjectWidgets(state.project, [widgetId], (widget: WidgetNode) => updateWidgetTokenReference(widget, propertyName, tokenId));
+      if (JSON.stringify(nextProject) === JSON.stringify(state.project)) {
+        return state;
       }
 
       return commitProjectChange(state, nextProject, [widgetId]);
