@@ -7,6 +7,57 @@ function sanitizeScreenComment(name: string): string {
   return name.replace(/[\r\n]+/g, " ").trim() || "Screen";
 }
 
+function assetExtensionFromMimeType(mimeType: string): string {
+  if (mimeType === "image/png") {
+    return "png";
+  }
+  if (mimeType === "image/jpeg") {
+    return "jpg";
+  }
+  if (mimeType === "image/gif") {
+    return "gif";
+  }
+  return "bin";
+}
+
+function decodeDataUrl(dataUrl: string): Uint8Array {
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) {
+    return new Uint8Array();
+  }
+
+  const base64 = dataUrl.slice(commaIndex + 1);
+  const raw = atob(base64);
+  const bytes = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) {
+    bytes[index] = raw.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+export function generateAssetManifestSource(ir: LvglProjectIR): string {
+  const lines: string[] = [
+    "#include \"lvgl.h\"",
+    "#include \"ui.h\"",
+    "",
+  ];
+
+  if (ir.assets.length === 0) {
+    lines.push("// No image assets were exported.");
+    lines.push("");
+    return lines.join("\n");
+  }
+
+  for (const asset of ir.assets) {
+    lines.push(`// ${asset.name} (${asset.mimeType})`);
+    lines.push(`const lv_image_dsc_t ${asset.symbolName} = {0};`);
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
 export function generateUiHeader(ir: LvglProjectIR): string {
   const lines: string[] = [
     "#ifndef UI_H",
@@ -24,7 +75,12 @@ export function generateUiHeader(ir: LvglProjectIR): string {
     lines.push(`#define ${tokenMacro.name} ${tokenMacro.expression}`);
   }
 
-  if (ir.styleTokenMacros.length > 0) {
+  for (const asset of ir.assets) {
+    lines.push(`extern const lv_image_dsc_t ${asset.symbolName};`);
+    lines.push(`#define ${asset.macroName} (&${asset.symbolName})`);
+  }
+
+  if (ir.styleTokenMacros.length > 0 || ir.assets.length > 0) {
     lines.push("");
   }
 
@@ -231,6 +287,7 @@ export function generateLvglFiles(project: ProjectSnapshot): Record<string, stri
     "ui.h": generateUiHeader(ir),
     "ui.c": generateUiSource(ir),
     "ui_events.c": generateUiEventsSource(ir),
+    "assets/manifest.c": generateAssetManifestSource(ir),
   };
 }
 
@@ -240,6 +297,12 @@ export async function generateLvglZip(project: ProjectSnapshot): Promise<Blob> {
 
   for (const [filename, content] of Object.entries(files)) {
     zip.file(filename, content);
+  }
+
+  for (const asset of Object.values(project.assets)) {
+    const extension = assetExtensionFromMimeType(asset.mimeType);
+    const fileStem = asset.name.replace(/\.[^.]+$/, "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_") || "asset";
+    zip.file(`assets/${fileStem}.${extension}`, decodeDataUrl(asset.dataUrl));
   }
 
   return zip.generateAsync({ type: "blob" });

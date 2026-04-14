@@ -188,6 +188,76 @@ describe("editorReducer screen lifecycle", () => {
     expect(removed.project.widgetsById.Button1.eventBindings?.clicked).toBeUndefined();
   });
 
+  it("imports image assets and assigns one to image widget", () => {
+    const state = createState();
+    const withImage = editorReducer(state, {
+      type: "addWidget",
+      parentId: "Panel1",
+      widgetType: "Image",
+      x: 12,
+      y: 12,
+    });
+    const imageId = withImage.selectedWidgetIds[0];
+
+    const imported = editorReducer(withImage, {
+      type: "importAssets",
+      assets: [
+        {
+          id: "asset-sample-1",
+          name: "sample.gif",
+          mimeType: "image/gif",
+          dataUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+        },
+      ],
+    });
+
+    const assigned = editorReducer(imported, {
+      type: "assignWidgetAsset",
+      widgetId: imageId,
+      assetId: "asset-sample-1",
+    });
+
+    expect(assigned.project.assets["asset-sample-1"]).toBeDefined();
+    expect(assigned.project.widgetsById[imageId].assetId).toBe("asset-sample-1");
+  });
+
+  it("deleting asset clears asset references from image widgets", () => {
+    const state = createState();
+    const withImage = editorReducer(state, {
+      type: "addWidget",
+      parentId: "Panel1",
+      widgetType: "Image",
+      x: 20,
+      y: 20,
+    });
+    const imageId = withImage.selectedWidgetIds[0];
+
+    const imported = editorReducer(withImage, {
+      type: "importAssets",
+      assets: [
+        {
+          id: "asset-delete-1",
+          name: "delete.gif",
+          mimeType: "image/gif",
+          dataUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+        },
+      ],
+    });
+    const assigned = editorReducer(imported, {
+      type: "assignWidgetAsset",
+      widgetId: imageId,
+      assetId: "asset-delete-1",
+    });
+
+    const deleted = editorReducer(assigned, {
+      type: "deleteAsset",
+      assetId: "asset-delete-1",
+    });
+
+    expect(deleted.project.assets["asset-delete-1"]).toBeUndefined();
+    expect(deleted.project.widgetsById[imageId].assetId).toBeUndefined();
+  });
+
   it("rejects invalid event binding targets and prunes deleted references", () => {
     const state = createState();
 

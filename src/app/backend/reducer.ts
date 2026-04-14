@@ -1,5 +1,6 @@
 import {
   KNOWN_WIDGET_EVENTS,
+  type AssetItem,
   type EventBinding,
   INSERTABLE_WIDGET_TYPES,
   type EditableWidgetProperty,
@@ -116,6 +117,19 @@ function removeTokenReferences(project: ProjectSnapshot, tokenId: string): Proje
     fillTokenId: widget.fillTokenId === tokenId ? undefined : widget.fillTokenId,
     textColorTokenId: widget.textColorTokenId === tokenId ? undefined : widget.textColorTokenId,
   }));
+}
+
+function removeAssetReferences(project: ProjectSnapshot, assetId: string): ProjectSnapshot {
+  return transformProjectWidgets(project, Object.keys(project.widgetsById), (widget: WidgetNode) => {
+    if (widget.assetId !== assetId) {
+      return widget;
+    }
+
+    return {
+      ...widget,
+      assetId: undefined,
+    };
+  });
 }
 
 function getNextScreenId(project: ProjectSnapshot): string {
@@ -681,6 +695,82 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (JSON.stringify(nextProject) === JSON.stringify(state.project)) {
         return state;
       }
+
+      return commitProjectChange(state, nextProject, [widgetId]);
+    }
+    case "importAssets": {
+      const assets = (action.assets as AssetItem[] | undefined) ?? [];
+      if (assets.length === 0) {
+        return state;
+      }
+
+      const nextAssets = { ...state.project.assets };
+      let changed = false;
+      for (const asset of assets) {
+        if (!asset?.id) {
+          continue;
+        }
+
+        if (nextAssets[asset.id]) {
+          continue;
+        }
+
+        nextAssets[asset.id] = asset;
+        changed = true;
+      }
+
+      if (!changed) {
+        return state;
+      }
+
+      return commitProjectChange(state, {
+        ...state.project,
+        assets: nextAssets,
+      });
+    }
+    case "deleteAsset": {
+      const assetId = action.assetId as string;
+      if (!assetId || !state.project.assets[assetId]) {
+        return state;
+      }
+
+      const { [assetId]: _removed, ...remainingAssets } = state.project.assets;
+      const nextProject = removeAssetReferences(
+        {
+          ...state.project,
+          assets: remainingAssets,
+        },
+        assetId,
+      );
+
+      return commitProjectChange(state, nextProject, state.selectedWidgetIds);
+    }
+    case "assignWidgetAsset": {
+      const widgetId = action.widgetId as string;
+      const assetId = (action.assetId as string | null) ?? null;
+
+      if (!widgetId) {
+        return state;
+      }
+
+      const targetWidget = getWidgetById(state.project, widgetId);
+      if (!targetWidget || targetWidget.type !== "Image") {
+        return state;
+      }
+
+      if (assetId && !state.project.assets[assetId]) {
+        return state;
+      }
+
+      const normalizedAssetId = assetId ?? undefined;
+      if (targetWidget.assetId === normalizedAssetId) {
+        return state;
+      }
+
+      const nextProject = transformProjectWidgets(state.project, [widgetId], (widget: WidgetNode) => ({
+        ...widget,
+        assetId: normalizedAssetId,
+      }));
 
       return commitProjectChange(state, nextProject, [widgetId]);
     }

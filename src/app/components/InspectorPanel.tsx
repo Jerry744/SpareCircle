@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button } from "./ui/button";
 import {
@@ -157,6 +157,7 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     position: true,
     style: true,
+    asset: true,
     text: true,
     flags: true,
   });
@@ -168,7 +169,7 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
       project,
       selectedWidgetIds,
     },
-    actions: { updateWidgetProperty, assignWidgetStyleToken, clearWidgetProperty },
+    actions: { updateWidgetProperty, assignWidgetStyleToken, clearWidgetProperty, assignWidgetAsset, deleteAsset },
   } = useEditorBackend();
 
   const activeScreen = getActiveScreenFromProject(project);
@@ -193,6 +194,11 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
       flags: activeFields.filter((field) => field.section === "flags"),
     }),
     [activeFields],
+  );
+
+  const assetOptions = useMemo(
+    () => Object.values(project.assets).sort((left, right) => left.name.localeCompare(right.name)),
+    [project.assets],
   );
 
   useEffect(() => {
@@ -367,6 +373,21 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
           ))}
         </PropertySection>
 
+        {selectedWidget.type === "Image" ? (
+          <PropertySection
+            title="Asset"
+            expanded={expandedSections.asset}
+            onToggle={() => toggleSection("asset")}
+          >
+            <AssetProperty
+              selectedAssetId={selectedWidget.assetId ?? null}
+              options={assetOptions}
+              onChange={(assetId) => assignWidgetAsset(selectedWidget.id, assetId)}
+              onDelete={(assetId) => deleteAsset(assetId)}
+            />
+          </PropertySection>
+        ) : null}
+
         {/* Text Section */}
         <PropertySection
           title="Text"
@@ -410,6 +431,58 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
           ))}
         </PropertySection>
       </div>
+    </div>
+  );
+}
+
+function AssetProperty({
+  selectedAssetId,
+  options,
+  onChange,
+  onDelete,
+}: {
+  selectedAssetId: string | null;
+  options: ProjectSnapshot["assets"][string][];
+  onChange: (assetId: string | null) => void;
+  onDelete: (assetId: string) => void;
+}) {
+  const selectedAsset = selectedAssetId ? options.find((item) => item.id === selectedAssetId) ?? null : null;
+
+  return (
+    <div className="space-y-2">
+      <div className="text-xs text-gray-400">Source</div>
+      <div className="flex items-center gap-2">
+        <Select value={selectedAssetId ?? "__none__"} onValueChange={(nextValue) => onChange(nextValue === "__none__" ? null : nextValue)}>
+          <SelectTrigger className="h-8 w-full bg-[#252525] border-[#3c3c3c] text-[11px] text-gray-300">
+            <SelectValue placeholder="No asset selected">
+              {selectedAsset ? selectedAsset.name : "No asset selected"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">No asset selected</SelectItem>
+            {options.map((asset) => (
+              <SelectItem key={asset.id} value={asset.id}>{asset.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 px-2"
+          disabled={!selectedAsset}
+          onClick={() => {
+            if (selectedAsset) {
+              onDelete(selectedAsset.id);
+            }
+          }}
+          title="Delete selected asset from project"
+        >
+          <Trash2 size={12} />
+        </Button>
+      </div>
+      {selectedAsset ? <div className="text-[11px] text-gray-500">{selectedAsset.mimeType}</div> : null}
+      {options.length === 0 ? <div className="text-[11px] text-gray-500">Import images from toolbar first.</div> : null}
     </div>
   );
 }

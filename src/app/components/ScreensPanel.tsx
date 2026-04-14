@@ -1,4 +1,4 @@
-import { Copy, Monitor, Pencil, Plus, Smartphone, Tablet, Trash2 } from "lucide-react";
+import { Copy, Monitor, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEditorBackend } from "../backend/editorStore";
 
 export function ScreensPanel() {
@@ -17,7 +17,7 @@ export function ScreensPanel() {
   }));
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="shrink-0 flex flex-col min-h-0 max-h-[40%]">
       <div className="h-10 flex items-center justify-between px-3 border-b border-[#1e1e1e]">
         <span className="text-xs font-semibold text-gray-400">SCREENS</span>
         <button
@@ -28,7 +28,7 @@ export function ScreensPanel() {
           <Plus size={16} />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="overflow-y-auto p-2">
         <div className="space-y-1">
           {screens.map((screen) => (
             <div
@@ -84,20 +84,6 @@ export function ScreensPanel() {
               </button>
             </div>
           ))}
-        </div>
-        <div className="mt-3 pt-3 border-t border-[#3c3c3c]">
-          <div className="text-xs text-gray-500 mb-2 px-1">DEVICE PREVIEW</div>
-          <div className="flex gap-2 px-1">
-            <button className="flex-1 p-2 bg-[#3c4a5d] hover:bg-[#4a5a6d] rounded transition-colors flex items-center justify-center text-gray-200">
-              <Monitor size={16} />
-            </button>
-            <button className="flex-1 p-2 hover:bg-[#3c3c3c] rounded transition-colors flex items-center justify-center text-gray-400">
-              <Tablet size={16} />
-            </button>
-            <button className="flex-1 p-2 hover:bg-[#3c3c3c] rounded transition-colors flex items-center justify-center text-gray-400">
-              <Smartphone size={16} />
-            </button>
-          </div>
         </div>
       </div>
     </div>

@@ -25,7 +25,7 @@ export function IDELayout() {
 
   return (
     <EditorBackendProvider>
-      <div className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-gray-200">
+      <div className="sc-editor-shell h-screen w-screen flex flex-col bg-[#1e1e1e] text-gray-200">
         {/* Top Toolbar */}
         <TopToolbar />
 

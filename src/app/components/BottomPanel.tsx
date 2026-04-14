@@ -7,8 +7,11 @@ import {
   FileCode,
   Plus,
   Upload,
-  Download
+  Download,
+  Trash2,
 } from "lucide-react";
+import { useRef, useState } from "react";
+import { useEditorBackend } from "../backend/editorStore";
 
 interface BottomPanelProps {
   activeTab: string;
@@ -59,35 +62,108 @@ export function BottomPanel({ activeTab, onTabChange }: BottomPanelProps) {
 }
 
 function AssetsPanel() {
-  const assets = [
-    { name: "icon_home.png", size: "2.4 KB", type: "image" },
-    { name: "icon_settings.png", size: "1.8 KB", type: "image" },
-    { name: "background.jpg", size: "45.2 KB", type: "image" },
-    { name: "logo.svg", size: "3.1 KB", type: "vector" },
-  ];
+  const {
+    state: { project },
+    actions: { importAssets, deleteAsset },
+  } = useEditorBackend();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const assets = Object.values(project.assets).sort((left, right) => left.name.localeCompare(right.name));
+
+  const estimateAssetSize = (dataUrl: string): number => {
+    const commaIndex = dataUrl.indexOf(",");
+    if (commaIndex < 0) {
+      return 0;
+    }
+
+    const base64 = dataUrl.slice(commaIndex + 1);
+    const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+    return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+  };
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleImport = async (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    const result = await importAssets(files);
+    if (!result.ok) {
+      setError(result.error);
+      setMessage(null);
+      return;
+    }
+
+    setMessage(`Imported ${result.importedCount} asset${result.importedCount > 1 ? "s" : ""}`);
+    setError(null);
+  };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm font-semibold text-gray-200">Project Assets</div>
         <div className="flex gap-2">
-          <button className="px-3 py-1 bg-[#5b9dd9] hover:bg-[#6ba8dd] rounded text-xs flex items-center gap-1 transition-colors text-white">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3 py-1 bg-[#5b9dd9] hover:bg-[#6ba8dd] rounded text-xs flex items-center gap-1 transition-colors text-white"
+          >
             <Upload size={12} />
             Import
           </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              void handleImport(event.target.files);
+              event.currentTarget.value = "";
+            }}
+          />
         </div>
       </div>
+      {error ? (
+        <div className="mb-2 text-[11px] text-rose-400">Import failed: {error}</div>
+      ) : null}
+      {!error && message ? (
+        <div className="mb-2 text-[11px] text-emerald-300">{message}</div>
+      ) : null}
+      {assets.length === 0 ? (
+        <div className="text-xs text-gray-500 border border-dashed border-[#3c3c3c] rounded p-4">
+          No assets yet. Import image files here to use them in Image widgets.
+        </div>
+      ) : null}
       <div className="grid grid-cols-4 gap-2">
-        {assets.map((asset, i) => (
+        {assets.map((asset) => (
           <div
-            key={i}
-            className="p-3 bg-[#252525] hover:bg-[#3c3c3c] rounded cursor-pointer transition-colors border border-transparent hover:border-[#5b9dd9]/30"
+            key={asset.id}
+            className="p-3 bg-[#252525] hover:bg-[#3c3c3c] rounded transition-colors border border-transparent hover:border-[#5b9dd9]/30"
           >
             <div className="w-full aspect-square bg-[#1e1e1e] rounded flex items-center justify-center mb-2">
-              <ImageIcon size={24} className="text-gray-500" />
+              <img src={asset.dataUrl} alt={asset.name} className="max-w-full max-h-full object-contain rounded" />
             </div>
             <div className="text-xs truncate text-gray-300">{asset.name}</div>
-            <div className="text-[10px] text-gray-500">{asset.size}</div>
+            <div className="text-[10px] text-gray-500">{asset.mimeType} • {formatBytes(estimateAssetSize(asset.dataUrl))}</div>
+            <button
+              type="button"
+              onClick={() => deleteAsset(asset.id)}
+              className="mt-2 px-2 py-1 text-[10px] rounded border border-[#4a2c2c] text-rose-300 hover:bg-[#3a2323] flex items-center gap-1"
+            >
+              <Trash2 size={10} />
+              Delete
+            </button>
           </div>
         ))}
       </div>

@@ -3,6 +3,8 @@ import {
   KNOWN_WIDGET_EVENTS,
   KNOWN_WIDGET_TYPES,
   WIDGET_EDITABLE_PROPERTIES,
+  type AssetItem,
+  type AssetMimeType,
   type EventBinding,
   type StyleToken,
   type EditableWidgetProperty,
@@ -17,6 +19,9 @@ import {
   type WidgetType,
 } from "./types";
 import { MATERIAL_COLOR_PRESET } from "../constants/designTokens";
+
+const SUPPORTED_ASSET_MIME_TYPES: ReadonlySet<AssetMimeType> = new Set(["image/png", "image/jpeg", "image/gif"]);
+export const MAX_ASSET_SIZE_BYTES = 1024 * 1024;
 
 type LegacyWidgetNode = Omit<WidgetNode, "parentId" | "childrenIds"> & { children: LegacyWidgetNode[] };
 
@@ -35,6 +40,41 @@ type LegacyProjectSnapshot = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isAssetMimeType(value: unknown): value is AssetMimeType {
+  return typeof value === "string" && SUPPORTED_ASSET_MIME_TYPES.has(value as AssetMimeType);
+}
+
+export function isValidAssetId(value: unknown): value is string {
+  return typeof value === "string" && /^asset-[a-z0-9-]{6,}$/i.test(value.trim());
+}
+
+export function isSupportedAssetMimeType(value: string): value is AssetMimeType {
+  return SUPPORTED_ASSET_MIME_TYPES.has(value as AssetMimeType);
+}
+
+export function isWithinAssetSizeLimit(sizeBytes: number): boolean {
+  return Number.isFinite(sizeBytes) && sizeBytes > 0 && sizeBytes <= MAX_ASSET_SIZE_BYTES;
+}
+
+function estimateDataUrlSize(dataUrl: string): number {
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const base64 = dataUrl.slice(commaIndex + 1);
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+function isValidDataUrl(dataUrl: string, mimeType: AssetMimeType): boolean {
+  if (!dataUrl.startsWith(`data:${mimeType};base64,`)) {
+    return false;
+  }
+
+  return isWithinAssetSizeLimit(estimateDataUrlSize(dataUrl));
 }
 
 function isWidgetType(value: unknown): value is WidgetType {
@@ -318,6 +358,7 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
   const maybeTextColor = input.textColor;
   const maybeTextColorTokenId = input.textColorTokenId;
   const maybeRadius = input.radius;
+  const maybeAssetId = input.assetId;
   const maybeVisible = input.visible;
   const maybeLocked = input.locked;
   const maybeEventBindings = input.eventBindings;
@@ -339,6 +380,9 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
   }
   if (maybeRadius !== undefined && (typeof maybeRadius !== "number" || !Number.isFinite(maybeRadius))) {
     return { ok: false, error: `${path}.radius must be a finite number when provided` };
+  }
+  if (maybeAssetId !== undefined && !isValidAssetId(maybeAssetId)) {
+    return { ok: false, error: `${path}.assetId must match asset id format when provided` };
   }
   if (maybeVisible !== undefined && typeof maybeVisible !== "boolean") {
     return { ok: false, error: `${path}.visible must be a boolean when provided` };
@@ -370,11 +414,68 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
       textColor: maybeTextColor,
       textColorTokenId: maybeTextColorTokenId,
       radius: maybeRadius,
+      assetId: maybeAssetId,
       visible: maybeVisible,
       locked: maybeLocked,
       eventBindings: parsedEventBindings.eventBindings,
     },
   };
+}
+
+function parseAsset(input: unknown, path: string): { ok: true; asset: AssetItem } | { ok: false; error: string } {
+  if (!isRecord(input)) {
+    return { ok: false, error: `${path} must be an object` };
+  }
+
+  const { id, name, mimeType, dataUrl } = input;
+  if (!isValidAssetId(id)) {
+    return { ok: false, error: `${path}.id must be a valid asset id` };
+  }
+  if (typeof name !== "string" || !name.trim()) {
+    return { ok: false, error: `${path}.name must be a non-empty string` };
+  }
+  if (!isAssetMimeType(mimeType)) {
+    return { ok: false, error: `${path}.mimeType is not supported` };
+  }
+  if (typeof dataUrl !== "string" || !isValidDataUrl(dataUrl, mimeType)) {
+    return { ok: false, error: `${path}.dataUrl is invalid or exceeds size limit` };
+  }
+
+  return {
+    ok: true,
+    asset: {
+      id,
+      name: name.trim(),
+      mimeType,
+      dataUrl,
+    },
+  };
+}
+
+function parseAssets(input: unknown): { ok: true; assets: Record<string, AssetItem> } | { ok: false; error: string } {
+  if (input === undefined) {
+    return { ok: true, assets: {} };
+  }
+
+  if (!isRecord(input)) {
+    return { ok: false, error: "Project.assets must be an object" };
+  }
+
+  const assets: Record<string, AssetItem> = {};
+  for (const [assetId, rawAsset] of Object.entries(input)) {
+    const parsed = parseAsset(rawAsset, `Project.assets.${assetId}`);
+    if (!parsed.ok) {
+      return parsed;
+    }
+
+    if (parsed.asset.id !== assetId) {
+      return { ok: false, error: `Project.assets.${assetId}.id must match key` };
+    }
+
+    assets[assetId] = parsed.asset;
+  }
+
+  return { ok: true, assets };
 }
 
 function parseStyleToken(input: unknown, path: string): { ok: true; token: StyleToken } | { ok: false; error: string } {
@@ -451,6 +552,10 @@ function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSna
   if (!styleTokensResult.ok) {
     return styleTokensResult;
   }
+  const assetsResult = parseAssets(input.assets);
+  if (!assetsResult.ok) {
+    return assetsResult;
+  }
   if (!Array.isArray(screens) || screens.length === 0) {
     return { ok: false, error: "Project.screens must be a non-empty array" };
   }
@@ -481,6 +586,12 @@ function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSna
     }
     if (widget.textColorTokenId && !tokenIds.has(widget.textColorTokenId)) {
       return { ok: false, error: `Widget ${widget.id}.textColorTokenId does not exist in styleTokens` };
+    }
+    if (widget.assetId && !assetsResult.assets[widget.assetId]) {
+      return { ok: false, error: `Widget ${widget.id}.assetId does not exist in assets` };
+    }
+    if (widget.assetId && widget.type !== "Image") {
+      return { ok: false, error: `Widget ${widget.id}.assetId can only be used by Image widgets` };
     }
   }
 
@@ -575,6 +686,7 @@ function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSna
       activeScreenId,
       widgetsById: parsedWidgets,
       styleTokens: styleTokensResult.tokens,
+      assets: assetsResult.assets,
     },
   };
 }
@@ -647,6 +759,9 @@ function parseLegacyWidget(input: unknown, path: string): { ok: true; widget: Le
   }
   if (input.locked !== undefined) {
     nextWidget.locked = input.locked as boolean;
+  }
+  if (input.assetId !== undefined) {
+    nextWidget.assetId = input.assetId as string;
   }
 
   return { ok: true, widget: nextWidget };
@@ -751,6 +866,7 @@ function parseLegacyProject(input: unknown): { ok: true; project: ProjectSnapsho
       activeScreenId,
       widgetsById,
       styleTokens: [],
+      assets: {},
     },
   };
 }
@@ -885,5 +1001,6 @@ export function createInitialProject(): ProjectSnapshot {
       type: "color",
       value: token.value,
     })),
+    assets: {},
   };
 }

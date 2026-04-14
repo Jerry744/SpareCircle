@@ -13,3 +13,19 @@ body,
 body {
 	overflow: hidden;
 }
+
+.sc-editor-shell,
+.sc-editor-shell * {
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+.sc-editor-shell input,
+.sc-editor-shell textarea,
+.sc-editor-shell select,
+.sc-editor-shell [contenteditable=""],
+.sc-editor-shell [contenteditable="true"],
+.sc-editor-shell [contenteditable="plaintext-only"] {
+	-webkit-user-select: text;
+	user-select: text;
+}

@@ -42,6 +42,7 @@ export function CanvasViewport() {
   const zoomAnchorWorld = useRef<{ x: number; y: number } | null>(null);
   const zoomTimeoutRef = useRef<number | null>(null);
   const lastGestureScaleRef = useRef<number | null>(null);
+  const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const dragStateRef = useRef<{
     kind: "move" | "resize";
     pointerStart: Point;
@@ -185,15 +186,36 @@ export function CanvasViewport() {
       ctx.textBaseline = "middle";
       ctx.fillText(widget.text ?? widget.name, absX, absY + widget.height / 2);
     } else if (widget.type === "Image") {
-      ctx.strokeStyle = "rgba(255,255,255,0.3)";
-      ctx.setLineDash([4, 3]);
-      ctx.strokeRect(absX + 6, absY + 6, Math.max(8, widget.width - 12), Math.max(8, widget.height - 12));
-      ctx.setLineDash([]);
-      ctx.fillStyle = "rgba(255,255,255,0.75)";
-      ctx.font = "12px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("Image", absX + widget.width / 2, absY + widget.height / 2);
+      const asset = widget.assetId ? project.assets[widget.assetId] : undefined;
+      const cached = widget.assetId ? imageCacheRef.current.get(widget.assetId) : undefined;
+
+      if (asset && widget.assetId && !cached) {
+        const image = new Image();
+        image.onload = () => render();
+        image.onerror = () => render();
+        image.src = asset.dataUrl;
+        imageCacheRef.current.set(widget.assetId, image);
+      }
+
+      const image = widget.assetId ? imageCacheRef.current.get(widget.assetId) : undefined;
+      if (image && image.complete && image.naturalWidth > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(absX + 1, absY + 1, Math.max(1, widget.width - 2), Math.max(1, widget.height - 2));
+        ctx.clip();
+        ctx.drawImage(image, absX, absY, widget.width, widget.height);
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = "rgba(255,255,255,0.3)";
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(absX + 6, absY + 6, Math.max(8, widget.width - 12), Math.max(8, widget.height - 12));
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(asset ? "Loading..." : "Image", absX + widget.width / 2, absY + widget.height / 2);
+      }
     } else if (widget.type === "Button") {
       ctx.fillStyle = resolveWidgetColor(project, widget, "textColor");
       ctx.font = "600 13px sans-serif";

@@ -15,6 +15,12 @@ describe("Demo5 LVGL codegen", () => {
 
   it("generates ui.c using LVGL v9 APIs", () => {
     const project = createInitialProject();
+    project.assets["asset-logo"] = {
+      id: "asset-logo",
+      name: "logo.gif",
+      mimeType: "image/gif",
+      dataUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+    };
     project.widgetsById.Panel1.childrenIds.push("Image1");
     project.widgetsById.Image1 = {
       id: "Image1",
@@ -26,6 +32,7 @@ describe("Demo5 LVGL codegen", () => {
       y: 24,
       width: 32,
       height: 32,
+      assetId: "asset-logo",
       visible: true,
     };
 
@@ -33,7 +40,11 @@ describe("Demo5 LVGL codegen", () => {
 
     expect(files["ui.c"]).toContain("lv_button_create(");
     expect(files["ui.c"]).toContain("lv_image_create(");
+    expect(files["ui.c"]).toContain("lv_image_set_src(");
+    expect(files["ui.c"]).toContain("UI_ASSET_LOGO");
     expect(files["ui.c"]).toContain("lv_screen_load(");
+    expect(files["ui.h"]).toContain("#define UI_ASSET_LOGO");
+    expect(files["assets/manifest.c"]).toContain("logo.gif");
 
     expect(files["ui.c"]).not.toContain("lv_btn_create(");
     expect(files["ui.c"]).not.toContain("lv_img_create(");
@@ -42,10 +53,16 @@ describe("Demo5 LVGL codegen", () => {
 
   it("packages ui files into zip archive", async () => {
     const project = createInitialProject();
+    project.assets["asset-demo"] = {
+      id: "asset-demo",
+      name: "demo.gif",
+      mimeType: "image/gif",
+      dataUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+    };
     const blob = await generateLvglZip(project);
     const zip = await JSZip.loadAsync(blob);
 
-    expect(Object.keys(zip.files)).toEqual(expect.arrayContaining(["ui.h", "ui.c", "ui_events.c"]));
+    expect(Object.keys(zip.files)).toEqual(expect.arrayContaining(["ui.h", "ui.c", "ui_events.c", "assets/manifest.c", "assets/demo.gif"]));
   });
 
   it("emits token macros and references them in generated C", () => {

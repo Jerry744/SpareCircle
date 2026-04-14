@@ -71,7 +71,7 @@ export function emitButton(widget: LvglWidgetIR): string {
 export function emitImage(widget: LvglWidgetIR): string {
   const lines = [
     `  ${widget.cName} = lv_image_create(${widget.parentCName});`,
-    `  lv_image_set_src(${widget.cName}, "");`,
+    `  lv_image_set_src(${widget.cName}, ${widget.assetMacro ?? '""'});`,
     ...emitCommonWidgetSetup(widget),
   ];
 

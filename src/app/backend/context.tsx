@@ -7,6 +7,8 @@ import {
 } from "react";
 import {
   deserializeProjectSnapshot,
+  isSupportedAssetMimeType,
+  isWithinAssetSizeLimit,
   serializeProjectSnapshot,
   createInitialProject,
 } from "./validation";
@@ -14,6 +16,8 @@ import { editorReducer } from "./reducer";
 import { getActiveScreen } from "./tree";
 import { generateLvglZip } from "./codegen/generator";
 import type {
+  AssetItem,
+  AssetMimeType,
   EventBinding,
   EditableWidgetProperty,
   EditableWidgetPropertyValue,
@@ -27,6 +31,30 @@ import type {
 } from "./types";
 
 const EditorBackendContext = createContext<EditorBackendValue | null>(null);
+
+function createAssetId(): string {
+  const random = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return `asset-${random.toLowerCase()}`;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Failed to read asset file"));
+        return;
+      }
+
+      resolve(reader.result);
+    };
+    reader.onerror = () => reject(new Error("Failed to read asset file"));
+    reader.readAsDataURL(file);
+  });
+}
 
 export function EditorBackendProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(editorReducer, undefined, () => ({
@@ -67,6 +95,29 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
       deleteStyleToken: (tokenId: string) => dispatch({ type: "deleteStyleToken", tokenId }),
       assignWidgetStyleToken: (widgetId: string, propertyName: "fill" | "textColor", tokenId: string | null) =>
         dispatch({ type: "assignWidgetStyleToken", widgetId, propertyName, tokenId }),
+      importAssets: async (files: FileList | File[]) => {
+        const fileList = Array.from(files);
+        const validFiles = fileList.filter((file) => isSupportedAssetMimeType(file.type) && isWithinAssetSizeLimit(file.size));
+        if (validFiles.length === 0) {
+          return { ok: false, error: "No valid image assets selected (png/jpeg/gif, <= 1MB)" };
+        }
+
+        const importedAssets: AssetItem[] = [];
+        for (const file of validFiles) {
+          const dataUrl = await readFileAsDataUrl(file);
+          importedAssets.push({
+            id: createAssetId(),
+            name: file.name,
+            mimeType: file.type as AssetMimeType,
+            dataUrl,
+          });
+        }
+
+        dispatch({ type: "importAssets", assets: importedAssets });
+        return { ok: true, importedCount: importedAssets.length };
+      },
+      deleteAsset: (assetId: string) => dispatch({ type: "deleteAsset", assetId }),
+      assignWidgetAsset: (widgetId: string, assetId: string | null) => dispatch({ type: "assignWidgetAsset", widgetId, assetId }),
       upsertWidgetEventBinding: (widgetId: string, binding: EventBinding) =>
         dispatch({ type: "upsertWidgetEventBinding", widgetId, binding }),
       removeWidgetEventBinding: (widgetId: string, event: WidgetEventType) =>

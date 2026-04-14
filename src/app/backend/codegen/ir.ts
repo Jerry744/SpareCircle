@@ -15,8 +15,19 @@ export interface LvglWidgetIR {
   text?: string;
   fillExpression?: string;
   textColorExpression?: string;
+  assetSymbol?: string;
+  assetMacro?: string;
   visible: boolean;
   eventBindings?: WidgetEventBindings;
+}
+
+export interface LvglAssetIR {
+  id: string;
+  name: string;
+  mimeType: string;
+  symbolName: string;
+  macroName: string;
+  dataUrl: string;
 }
 
 export interface LvglScreenIR {
@@ -33,6 +44,7 @@ export interface LvglProjectIR {
   screens: LvglScreenIR[];
   activeScreenCName: string;
   styleTokenMacros: Array<{ name: string; expression: string }>;
+  assets: LvglAssetIR[];
 }
 
 function sanitizeToken(value: string): string {
@@ -118,6 +130,21 @@ export function createDeterministicName(base: string, used: Set<string>): string
 export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
   const usedNames = new Set<string>();
   const usedMacroNames = new Set<string>();
+  const usedAssetSymbols = new Set<string>();
+  const assets: LvglAssetIR[] = Object.values(project.assets).map((asset) => {
+    const base = `asset_${sanitizeToken(asset.name.replace(/\.[^.]+$/, ""))}`;
+    const symbolName = createDeterministicName(base, usedAssetSymbols);
+    const macroName = createMacroName(`UI_ASSET_${asset.name.replace(/\.[^.]+$/, "")}`, usedMacroNames);
+    return {
+      id: asset.id,
+      name: asset.name,
+      mimeType: asset.mimeType,
+      symbolName,
+      macroName,
+      dataUrl: asset.dataUrl,
+    };
+  });
+  const assetById = new Map(assets.map((asset) => [asset.id, asset]));
   const tokenMacroById = new Map<string, string>();
   const styleTokenMacros = project.styleTokens.map((token) => {
     const macroName = createMacroName(`SC_TOKEN_${token.name}`, usedMacroNames);
@@ -170,6 +197,8 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
             text: child.text ?? "",
             fillExpression,
             textColorExpression,
+            assetSymbol: child.type === "Image" && child.assetId ? assetById.get(child.assetId)?.symbolName : undefined,
+            assetMacro: child.type === "Image" && child.assetId ? assetById.get(child.assetId)?.macroName : undefined,
             visible: child.visible !== false,
             eventBindings: child.eventBindings,
           });
@@ -198,5 +227,6 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
     screens,
     activeScreenCName: activeScreen?.cName ?? "ui_screen",
     styleTokenMacros,
+    assets,
   };
 }

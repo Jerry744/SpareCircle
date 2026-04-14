@@ -1,4 +1,5 @@
 export type WidgetType = "Screen" | "Container" | "Panel" | "Label" | "Button" | "Slider" | "Switch" | "Image";
+export type AssetMimeType = "image/png" | "image/jpeg" | "image/gif";
 
 export type EditableWidgetProperty = "x" | "y" | "width" | "height" | "text" | "fill" | "textColor" | "visible";
 export type EditableWidgetPropertyValue = string | number | boolean;
@@ -33,6 +34,13 @@ export interface StyleToken {
   value: string;
 }
 
+export interface AssetItem {
+  id: string;
+  name: string;
+  mimeType: AssetMimeType;
+  dataUrl: string;
+}
+
 export interface WidgetNode {
   id: string;
   name: string;
@@ -49,6 +57,7 @@ export interface WidgetNode {
   textColor?: string;
   textColorTokenId?: string;
   radius?: number;
+  assetId?: string;
   visible?: boolean;
   locked?: boolean;
   eventBindings?: WidgetEventBindings;
@@ -72,6 +81,7 @@ export interface ProjectSnapshot {
   activeScreenId: string;
   widgetsById: Record<string, WidgetNode>;
   styleTokens: StyleToken[];
+  assets: Record<string, AssetItem>;
 }
 
 export type HydrateProjectResult = { ok: true } | { ok: false; error: string };
@@ -129,6 +139,9 @@ export interface EditorBackendValue {
     updateStyleToken: (tokenId: string, updates: { name?: string; value?: string }) => void;
     deleteStyleToken: (tokenId: string) => void;
     assignWidgetStyleToken: (widgetId: string, propertyName: "fill" | "textColor", tokenId: string | null) => void;
+    importAssets: (files: FileList | File[]) => Promise<{ ok: true; importedCount: number } | { ok: false; error: string }>;
+    deleteAsset: (assetId: string) => void;
+    assignWidgetAsset: (widgetId: string, assetId: string | null) => void;
     upsertWidgetEventBinding: (widgetId: string, binding: EventBinding) => void;
     removeWidgetEventBinding: (widgetId: string, event: WidgetEventType) => void;
     updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) => void;
