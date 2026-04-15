@@ -407,6 +407,44 @@ describe("editorReducer screen lifecycle", () => {
     expect(bound.project.widgetsById[switchId].eventBindings?.value_changed?.event).toBe("value_changed");
   });
 
+  it("adds Checkbox with correct defaults and supports undo", () => {
+    const state = createState();
+    const next = editorReducer(state, { type: "addWidget", parentId: "Panel1", widgetType: "Checkbox", x: 10, y: 10 });
+    const id = next.selectedWidgetIds[0];
+    const widget = next.project.widgetsById[id];
+    expect(widget.type).toBe("Checkbox");
+    expect(widget.text).toBe("Option");
+    expect(widget.fill).toBe("#3b82f6");
+    expect(widget.width).toBe(160);
+    expect(widget.height).toBe(32);
+    const undone = editorReducer(next, { type: "undo" });
+    expect(undone.project.widgetsById[id]).toBeUndefined();
+  });
+
+  it("adds Radio with correct defaults and supports checked state", () => {
+    const state = createState();
+    const next = editorReducer(state, { type: "addWidget", parentId: "Panel1", widgetType: "Radio", x: 10, y: 10 });
+    const id = next.selectedWidgetIds[0];
+    expect(next.project.widgetsById[id].type).toBe("Radio");
+    expect(next.project.widgetsById[id].text).toBe("Option");
+
+    const checked = editorReducer(next, { type: "updateWidgetProperty", widgetId: id, propertyName: "checked", value: true });
+    expect(checked.project.widgetsById[id].checked).toBe(true);
+  });
+
+  it("adds Dropdown with options string and supports text update", () => {
+    const state = createState();
+    const next = editorReducer(state, { type: "addWidget", parentId: "Panel1", widgetType: "Dropdown", x: 10, y: 10 });
+    const id = next.selectedWidgetIds[0];
+    expect(next.project.widgetsById[id].type).toBe("Dropdown");
+    expect(next.project.widgetsById[id].text).toBe("Option 1\nOption 2\nOption 3");
+    expect(next.project.widgetsById[id].width).toBe(160);
+    expect(next.project.widgetsById[id].height).toBe(40);
+
+    const updated = editorReducer(next, { type: "updateWidgetProperty", widgetId: id, propertyName: "text", value: "A\nB\nC" });
+    expect(updated.project.widgetsById[id].text).toBe("A\nB\nC");
+  });
+
   it("rejects invalid event binding targets and prunes deleted references", () => {
     const state = createState();
 

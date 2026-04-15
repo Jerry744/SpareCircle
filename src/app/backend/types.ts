@@ -1,4 +1,4 @@
-export type WidgetType = "Screen" | "Container" | "Panel" | "Label" | "Button" | "Slider" | "Switch" | "Image";
+export type WidgetType = "Screen" | "Container" | "Panel" | "Label" | "Button" | "Slider" | "Switch" | "Checkbox" | "Radio" | "Dropdown" | "Image";
 export type AssetMimeType = "image/png" | "image/jpeg" | "image/gif";
 
 export type EditableWidgetProperty = "x" | "y" | "width" | "height" | "text" | "fill" | "textColor" | "visible" | "value" | "checked";
@@ -156,7 +156,7 @@ export interface EditorBackendValue {
   };
 }
 
-export const KNOWN_WIDGET_TYPES: WidgetType[] = ["Screen", "Container", "Panel", "Label", "Button", "Slider", "Switch", "Image"];
+export const KNOWN_WIDGET_TYPES: WidgetType[] = ["Screen", "Container", "Panel", "Label", "Button", "Slider", "Switch", "Checkbox", "Radio", "Dropdown", "Image"];
 export const KNOWN_WIDGET_EVENTS: WidgetEventType[] = ["clicked", "pressed", "value_changed"];
 export const KNOWN_WIDGET_ACTIONS: WidgetActionType[] = ["switch_screen", "toggle_visibility"];
 
@@ -168,10 +168,13 @@ export const WIDGET_EDITABLE_PROPERTIES: Record<WidgetType, ReadonlySet<Editable
   Button: new Set(["x", "y", "width", "height", "text", "fill", "textColor", "visible"]),
   Slider: new Set(["x", "y", "width", "height", "fill", "value", "visible"]),
   Switch: new Set(["x", "y", "width", "height", "fill", "checked", "visible"]),
+  Checkbox: new Set(["x", "y", "width", "height", "text", "fill", "textColor", "checked", "visible"]),
+  Radio: new Set(["x", "y", "width", "height", "text", "fill", "textColor", "checked", "visible"]),
+  Dropdown: new Set(["x", "y", "width", "height", "text", "fill", "textColor", "visible"]),
   Image: new Set(["x", "y", "width", "height", "fill", "visible"]),
 };
 
-export const INSERTABLE_WIDGET_TYPES: WidgetType[] = ["Container", "Panel", "Label", "Button", "Slider", "Switch", "Image"];
+export const INSERTABLE_WIDGET_TYPES: WidgetType[] = ["Container", "Panel", "Label", "Button", "Slider", "Switch", "Checkbox", "Radio", "Dropdown", "Image"];
 
 export const CONTAINER_WIDGET_TYPES = new Set<WidgetType>(["Screen", "Container", "Panel"]);
 

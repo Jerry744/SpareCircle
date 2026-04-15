@@ -108,6 +108,88 @@ export function emitSwitch(widget: LvglWidgetIR): string {
   return lines.join("\n");
 }
 
+export function emitCheckbox(widget: LvglWidgetIR): string {
+  const lines = [
+    `  ${widget.cName} = lv_checkbox_create(${widget.parentCName});`,
+    `  lv_checkbox_set_text(${widget.cName}, "${escapeCString(widget.text || "Option")}");`,
+    `  lv_obj_set_pos(${widget.cName}, ${widget.x}, ${widget.y});`,
+    `  lv_obj_set_size(${widget.cName}, ${widget.width}, ${widget.height});`,
+  ];
+
+  if (widget.fillExpression) {
+    lines.push(`  lv_obj_set_style_bg_color(${widget.cName}, ${widget.fillExpression}, LV_PART_INDICATOR | LV_STATE_CHECKED);`);
+    lines.push(`  lv_obj_set_style_bg_opa(${widget.cName}, LV_OPA_COVER, LV_PART_INDICATOR | LV_STATE_CHECKED);`);
+  }
+
+  if (widget.checked === true) {
+    lines.push(`  lv_obj_add_state(${widget.cName}, LV_STATE_CHECKED);`);
+  }
+
+  if (widget.textColorExpression) {
+    lines.push(`  lv_obj_set_style_text_color(${widget.cName}, ${widget.textColorExpression}, LV_PART_MAIN);`);
+  }
+
+  if (!widget.visible) {
+    lines.push(`  lv_obj_add_flag(${widget.cName}, LV_OBJ_FLAG_HIDDEN);`);
+  }
+
+  return lines.join("\n");
+}
+
+export function emitRadio(widget: LvglWidgetIR): string {
+  const lines = [
+    `  ${widget.cName} = lv_checkbox_create(${widget.parentCName});`,
+    `  lv_checkbox_set_text(${widget.cName}, "${escapeCString(widget.text || "Option")}");`,
+    `  lv_obj_set_pos(${widget.cName}, ${widget.x}, ${widget.y});`,
+    `  lv_obj_set_size(${widget.cName}, ${widget.width}, ${widget.height});`,
+    `  lv_obj_set_style_radius(${widget.cName}, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);`,
+    `  lv_obj_set_style_radius(${widget.cName}, LV_RADIUS_CIRCLE, LV_PART_INDICATOR | LV_STATE_CHECKED);`,
+  ];
+
+  if (widget.fillExpression) {
+    lines.push(`  lv_obj_set_style_bg_color(${widget.cName}, ${widget.fillExpression}, LV_PART_INDICATOR | LV_STATE_CHECKED);`);
+    lines.push(`  lv_obj_set_style_bg_opa(${widget.cName}, LV_OPA_COVER, LV_PART_INDICATOR | LV_STATE_CHECKED);`);
+  }
+
+  if (widget.checked === true) {
+    lines.push(`  lv_obj_add_state(${widget.cName}, LV_STATE_CHECKED);`);
+  }
+
+  if (widget.textColorExpression) {
+    lines.push(`  lv_obj_set_style_text_color(${widget.cName}, ${widget.textColorExpression}, LV_PART_MAIN);`);
+  }
+
+  if (!widget.visible) {
+    lines.push(`  lv_obj_add_flag(${widget.cName}, LV_OBJ_FLAG_HIDDEN);`);
+  }
+
+  return lines.join("\n");
+}
+
+export function emitDropdown(widget: LvglWidgetIR): string {
+  const lines = [
+    `  ${widget.cName} = lv_dropdown_create(${widget.parentCName});`,
+    `  lv_dropdown_set_options(${widget.cName}, "${escapeCString(widget.text || "Option 1\\nOption 2\\nOption 3")}");`,
+    `  lv_obj_set_pos(${widget.cName}, ${widget.x}, ${widget.y});`,
+    `  lv_obj_set_size(${widget.cName}, ${widget.width}, ${widget.height});`,
+  ];
+
+  if (widget.fillExpression) {
+    lines.push(`  lv_obj_set_style_bg_color(${widget.cName}, ${widget.fillExpression}, LV_PART_MAIN);`);
+    lines.push(`  lv_obj_set_style_bg_opa(${widget.cName}, LV_OPA_COVER, LV_PART_MAIN);`);
+  }
+
+  if (widget.textColorExpression) {
+    lines.push(`  lv_obj_set_style_text_color(${widget.cName}, ${widget.textColorExpression}, LV_PART_MAIN);`);
+  }
+
+  if (!widget.visible) {
+    lines.push(`  lv_obj_add_flag(${widget.cName}, LV_OBJ_FLAG_HIDDEN);`);
+  }
+
+  return lines.join("\n");
+}
+
 export function emitImage(widget: LvglWidgetIR): string {
   const lines = [
     `  ${widget.cName} = lv_image_create(${widget.parentCName});`,
@@ -130,6 +212,12 @@ export function emitWidget(widget: LvglWidgetIR): string {
       return emitSlider(widget);
     case "switch":
       return emitSwitch(widget);
+    case "checkbox":
+      return emitCheckbox(widget);
+    case "radio":
+      return emitRadio(widget);
+    case "dropdown":
+      return emitDropdown(widget);
     case "image":
       return emitImage(widget);
     default:

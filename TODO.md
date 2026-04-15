@@ -198,34 +198,34 @@ This checklist focuses on the most important demos needed to move from a fronten
 
 ### 第二批：选择类控件
 
-- [ ] Checkbox — 复选框
-  - [ ] 注册 INSERTABLE_WIDGET_TYPES
-  - [ ] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（建议 120×32，text "Option"）
-  - [ ] Canvas 渲染（方形勾选框 + 标签文字）
-  - [ ] Inspector 可编辑（x/y/w/h/text/fill/visible）
-  - [ ] IR kind `checkbox` + `emitCheckbox`（`lv_checkbox_create`）
-  - [ ] Events 支持 `value_changed`
-  - [ ] reducer + codegen 测试补齐
+- [x] Checkbox — 复选框
+  - [x] 注册 INSERTABLE_WIDGET_TYPES
+  - [x] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（160×32，text "Option"，fill #3b82f6）
+  - [x] Canvas 渲染（方形勾选框 + 勾选动画 + 标签文字，checked 状态可视）
+  - [x] Inspector 可编辑（x/y/w/h/text/fill/textColor/checked/visible）
+  - [x] IR kind `checkbox` + `emitCheckbox`（`lv_checkbox_create` + `LV_PART_INDICATOR | LV_STATE_CHECKED`）
+  - [x] Events 支持 `value_changed`（通过现有事件绑定系统）
+  - [x] reducer + codegen 测试补齐
 
-- [ ] Radio — 单选按钮
-  - [ ] 注册 INSERTABLE_WIDGET_TYPES
-  - [ ] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（建议 120×32，text "Option"）
-  - [ ] Canvas 渲染（圆形选择指示 + 标签文字）
-  - [ ] Inspector 可编辑（x/y/w/h/text/fill/visible）
-  - [ ] IR kind `radio` + `emitRadio`（`lv_checkbox_create` + `lv_obj_add_style` 圆形 style）
-  - [ ] Events 支持 `value_changed`
-  - [ ] reducer + codegen 测试补齐
+- [x] Radio — 单选按钮
+  - [x] 注册 INSERTABLE_WIDGET_TYPES
+  - [x] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（160×32，text "Option"，fill #3b82f6）
+  - [x] Canvas 渲染（圆形外框 + 内圆 filled 表示 checked + 标签文字）
+  - [x] Inspector 可编辑（x/y/w/h/text/fill/textColor/checked/visible）
+  - [x] IR kind `radio` + `emitRadio`（`lv_checkbox_create` + `lv_obj_set_style_radius(LV_RADIUS_CIRCLE)`）
+  - [x] Events 支持 `value_changed`（通过现有事件绑定系统）
+  - [x] reducer + codegen 测试补齐
 
 ### 第三批：复合控件
 
-- [ ] Dropdown — 下拉菜单
-  - [ ] 注册 INSERTABLE_WIDGET_TYPES
-  - [ ] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（建议 160×40，text "Option 1\nOption 2\nOption 3"）
-  - [ ] Canvas 渲染（矩形框 + 箭头图标 + 当前选中文字）
-  - [ ] Inspector 可编辑（x/y/w/h/text/fill/visible）
-  - [ ] IR kind `dropdown` + `emitDropdown`（`lv_dropdown_create` + `lv_dropdown_set_options`）
-  - [ ] Events 支持 `value_changed`
-  - [ ] reducer + codegen 测试补齐
+- [x] Dropdown — 下拉菜单
+  - [x] 注册 INSERTABLE_WIDGET_TYPES
+  - [x] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（160×40，text "Option 1\nOption 2\nOption 3"，fill #374151）
+  - [x] Canvas 渲染（fill 背景 + 三角箭头 + 第一个选项文字）
+  - [x] Inspector 可编辑（x/y/w/h/text/fill/textColor/visible，text 字段存 `\n` 分隔的选项）
+  - [x] IR kind `dropdown` + `emitDropdown`（`lv_dropdown_create` + `lv_dropdown_set_options`）
+  - [x] Events 支持 `value_changed`（通过现有事件绑定系统）
+  - [x] reducer + codegen 测试补齐
 
 ### 第四批：显示类控件（暂列，优先级低于以上各批）
 

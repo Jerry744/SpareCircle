@@ -194,6 +194,46 @@ describe("Demo5 LVGL codegen", () => {
     expect(files["ui_events.c"]).toContain("lv_obj_add_event_cb(");
   });
 
+  it("emits lv_checkbox_create and LV_PART_INDICATOR for Checkbox", () => {
+    const project = createInitialProject();
+    project.widgetsById.Panel1.childrenIds.push("Cb1");
+    project.widgetsById.Cb1 = {
+      id: "Cb1", name: "Cb1", type: "Checkbox", parentId: "Panel1", childrenIds: [],
+      x: 10, y: 10, width: 160, height: 32, text: "Agree", fill: "#3b82f6", checked: true, visible: true,
+    };
+    const files = generateLvglFiles(project);
+    expect(files["ui.c"]).toContain("lv_checkbox_create(");
+    expect(files["ui.c"]).toContain('lv_checkbox_set_text(');
+    expect(files["ui.c"]).toContain("LV_PART_INDICATOR | LV_STATE_CHECKED");
+    expect(files["ui.c"]).toContain("lv_obj_add_state(");
+  });
+
+  it("emits lv_checkbox_create with LV_RADIUS_CIRCLE for Radio", () => {
+    const project = createInitialProject();
+    project.widgetsById.Panel1.childrenIds.push("Rb1");
+    project.widgetsById.Rb1 = {
+      id: "Rb1", name: "Rb1", type: "Radio", parentId: "Panel1", childrenIds: [],
+      x: 10, y: 10, width: 160, height: 32, text: "Choice A", fill: "#3b82f6", visible: true,
+    };
+    const files = generateLvglFiles(project);
+    expect(files["ui.c"]).toContain("lv_checkbox_create(");
+    expect(files["ui.c"]).toContain("LV_RADIUS_CIRCLE");
+  });
+
+  it("emits lv_dropdown_create and lv_dropdown_set_options for Dropdown", () => {
+    const project = createInitialProject();
+    project.widgetsById.Panel1.childrenIds.push("Dd1");
+    project.widgetsById.Dd1 = {
+      id: "Dd1", name: "Dd1", type: "Dropdown", parentId: "Panel1", childrenIds: [],
+      x: 10, y: 10, width: 160, height: 40,
+      text: "Option 1\nOption 2\nOption 3", fill: "#374151", visible: true,
+    };
+    const files = generateLvglFiles(project);
+    expect(files["ui.c"]).toContain("lv_dropdown_create(");
+    expect(files["ui.c"]).toContain("lv_dropdown_set_options(");
+    expect(files["ui.c"]).toContain("Option 1");
+  });
+
   it("emits callback stubs and event registrations for bindings", () => {
     const project = createInitialProject();
     project.widgetsById.Button1.eventBindings = {

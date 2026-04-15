@@ -159,7 +159,7 @@ export function CanvasViewport() {
 
     ctx.save();
 
-    if (fill !== "transparent" && widget.type !== "Slider" && widget.type !== "Switch") {
+    if (fill !== "transparent" && widget.type !== "Slider" && widget.type !== "Switch" && widget.type !== "Checkbox" && widget.type !== "Radio") {
       ctx.fillStyle = fill;
       if (radius > 0) {
         drawRoundedRect(ctx, absX, absY, widget.width, widget.height, radius);
@@ -222,6 +222,85 @@ export function CanvasViewport() {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(widget.text ?? widget.name, absX + widget.width / 2, absY + widget.height / 2);
+    } else if (widget.type === "Checkbox" || widget.type === "Radio") {
+      const isChecked = widget.checked === true;
+      const indicatorSize = Math.min(16, widget.height - 6);
+      const indicatorX = absX + 2;
+      const indicatorY = absY + (widget.height - indicatorSize) / 2;
+      const indicatorColor = resolveWidgetColor(project, widget, "fill");
+      const textCol = resolveWidgetColor(project, widget, "textColor");
+
+      if (widget.type === "Radio") {
+        const cx = indicatorX + indicatorSize / 2;
+        const cy = indicatorY + indicatorSize / 2;
+        const r = indicatorSize / 2;
+        // Outer circle
+        ctx.strokeStyle = isChecked ? indicatorColor : "rgba(255,255,255,0.4)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        // Inner filled circle when checked
+        if (isChecked) {
+          ctx.fillStyle = indicatorColor;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        // Checkbox square
+        const r = 3;
+        ctx.strokeStyle = isChecked ? indicatorColor : "rgba(255,255,255,0.4)";
+        ctx.lineWidth = 1.5;
+        drawRoundedRect(ctx, indicatorX, indicatorY, indicatorSize, indicatorSize, r);
+        ctx.stroke();
+        if (isChecked) {
+          ctx.fillStyle = indicatorColor;
+          drawRoundedRect(ctx, indicatorX, indicatorY, indicatorSize, indicatorSize, r);
+          ctx.fill();
+          // Checkmark
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2;
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.beginPath();
+          ctx.moveTo(indicatorX + indicatorSize * 0.2, indicatorY + indicatorSize * 0.5);
+          ctx.lineTo(indicatorX + indicatorSize * 0.42, indicatorY + indicatorSize * 0.72);
+          ctx.lineTo(indicatorX + indicatorSize * 0.8, indicatorY + indicatorSize * 0.22);
+          ctx.stroke();
+          ctx.lineCap = "butt";
+          ctx.lineJoin = "miter";
+        }
+      }
+
+      // Label text
+      ctx.fillStyle = textCol;
+      ctx.font = "13px sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(widget.text ?? "Option", indicatorX + indicatorSize + 7, absY + widget.height / 2);
+    } else if (widget.type === "Dropdown") {
+      // Background already drawn by fill; draw arrow + first option text
+      const arrowSize = 8;
+      const arrowX = absX + widget.width - arrowSize - 10;
+      const arrowY = absY + widget.height / 2;
+      const textCol = resolveWidgetColor(project, widget, "textColor");
+      const firstOption = (widget.text ?? "Option 1").split("\n")[0];
+
+      // Arrow (▼)
+      ctx.fillStyle = textCol;
+      ctx.beginPath();
+      ctx.moveTo(arrowX, arrowY - arrowSize / 2);
+      ctx.lineTo(arrowX + arrowSize, arrowY - arrowSize / 2);
+      ctx.lineTo(arrowX + arrowSize / 2, arrowY + arrowSize / 2);
+      ctx.closePath();
+      ctx.fill();
+
+      // Selected option text
+      ctx.font = "13px sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(firstOption, absX + 10, absY + widget.height / 2);
     } else if (widget.type === "Switch") {
       const isOn = widget.checked === true;
       const trackR = widget.height / 2;

@@ -63,6 +63,9 @@ const WIDGET_FIELD_SCHEMA: Record<WidgetNode["type"], EditableWidgetProperty[]> 
   Button: ["x", "y", "width", "height", "text", "fill", "textColor", "visible"],
   Slider: ["x", "y", "width", "height", "fill", "value", "visible"],
   Switch: ["x", "y", "width", "height", "fill", "checked", "visible"],
+  Checkbox: ["x", "y", "width", "height", "text", "fill", "textColor", "checked", "visible"],
+  Radio: ["x", "y", "width", "height", "text", "fill", "textColor", "checked", "visible"],
+  Dropdown: ["x", "y", "width", "height", "text", "fill", "textColor", "visible"],
   Image: ["x", "y", "width", "height", "fill", "visible"],
 };
 

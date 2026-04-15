@@ -14,6 +14,9 @@ export function mapPaletteWidgetToType(widgetId: string): WidgetType | null {
     button: "Button",
     slider: "Slider",
     switch: "Switch",
+    checkbox: "Checkbox",
+    radio: "Radio",
+    dropdown: "Dropdown",
     image: "Image",
   };
 
@@ -39,6 +42,11 @@ function getDefaultWidgetSize(widgetType: WidgetType): { width: number; height: 
       return { width: 200, height: 32 };
     case "Switch":
       return { width: 60, height: 32 };
+    case "Checkbox":
+    case "Radio":
+      return { width: 160, height: 32 };
+    case "Dropdown":
+      return { width: 160, height: 40 };
     case "Image":
       return { width: 120, height: 120 };
     default:
@@ -108,6 +116,57 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
       width: baseSize.width,
       height: baseSize.height,
       fill: "#22c55e",
+    };
+  }
+
+  if (widgetType === "Checkbox") {
+    return {
+      id,
+      name: "Checkbox",
+      type: "Checkbox",
+      parentId: null,
+      childrenIds: [],
+      x,
+      y,
+      width: baseSize.width,
+      height: baseSize.height,
+      text: "Option",
+      fill: "#3b82f6",
+      textColor: "#f3f4f6",
+    };
+  }
+
+  if (widgetType === "Radio") {
+    return {
+      id,
+      name: "Radio",
+      type: "Radio",
+      parentId: null,
+      childrenIds: [],
+      x,
+      y,
+      width: baseSize.width,
+      height: baseSize.height,
+      text: "Option",
+      fill: "#3b82f6",
+      textColor: "#f3f4f6",
+    };
+  }
+
+  if (widgetType === "Dropdown") {
+    return {
+      id,
+      name: "Dropdown",
+      type: "Dropdown",
+      parentId: null,
+      childrenIds: [],
+      x,
+      y,
+      width: baseSize.width,
+      height: baseSize.height,
+      text: "Option 1\nOption 2\nOption 3",
+      fill: "#374151",
+      textColor: "#f3f4f6",
     };
   }
 
