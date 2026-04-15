@@ -1,7 +1,7 @@
 export type WidgetType = "Screen" | "Container" | "Panel" | "Label" | "Button" | "Slider" | "Switch" | "Image";
 export type AssetMimeType = "image/png" | "image/jpeg" | "image/gif";
 
-export type EditableWidgetProperty = "x" | "y" | "width" | "height" | "text" | "fill" | "textColor" | "visible";
+export type EditableWidgetProperty = "x" | "y" | "width" | "height" | "text" | "fill" | "textColor" | "visible" | "value" | "checked";
 export type EditableWidgetPropertyValue = string | number | boolean;
 export type WidgetEventType = "clicked" | "pressed" | "value_changed";
 export type WidgetActionType = "switch_screen" | "toggle_visibility";
@@ -58,6 +58,8 @@ export interface WidgetNode {
   textColorTokenId?: string;
   radius?: number;
   assetId?: string;
+  value?: number;
+  checked?: boolean;
   visible?: boolean;
   locked?: boolean;
   eventBindings?: WidgetEventBindings;
@@ -164,12 +166,12 @@ export const WIDGET_EDITABLE_PROPERTIES: Record<WidgetType, ReadonlySet<Editable
   Panel: new Set(["x", "y", "width", "height", "fill", "visible"]),
   Label: new Set(["x", "y", "width", "height", "text", "textColor", "visible"]),
   Button: new Set(["x", "y", "width", "height", "text", "fill", "textColor", "visible"]),
-  Slider: new Set(["x", "y", "width", "height", "fill", "visible"]),
-  Switch: new Set(["x", "y", "width", "height", "fill", "visible"]),
+  Slider: new Set(["x", "y", "width", "height", "fill", "value", "visible"]),
+  Switch: new Set(["x", "y", "width", "height", "fill", "checked", "visible"]),
   Image: new Set(["x", "y", "width", "height", "fill", "visible"]),
 };
 
-export const INSERTABLE_WIDGET_TYPES: WidgetType[] = ["Container", "Panel", "Label", "Button", "Slider", "Image"];
+export const INSERTABLE_WIDGET_TYPES: WidgetType[] = ["Container", "Panel", "Label", "Button", "Slider", "Switch", "Image"];
 
 export const CONTAINER_WIDGET_TYPES = new Set<WidgetType>(["Screen", "Container", "Panel"]);
 

@@ -1,7 +1,7 @@
 import { buildWidgetTree } from "../tree";
 import type { ProjectSnapshot, WidgetNode, WidgetEventBindings } from "../types";
 
-export type LvglWidgetKind = "container" | "label" | "button" | "slider" | "image";
+export type LvglWidgetKind = "container" | "label" | "button" | "slider" | "switch" | "image";
 
 export interface LvglWidgetIR {
   id: string;
@@ -17,6 +17,8 @@ export interface LvglWidgetIR {
   textColorExpression?: string;
   assetSymbol?: string;
   assetMacro?: string;
+  value?: number;
+  checked?: boolean;
   visible: boolean;
   eventBindings?: WidgetEventBindings;
 }
@@ -108,6 +110,8 @@ function widgetKindFromNode(node: WidgetNode): LvglWidgetKind | null {
       return "button";
     case "Slider":
       return "slider";
+    case "Switch":
+      return "switch";
     case "Image":
       return "image";
     default:
@@ -201,6 +205,8 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
             textColorExpression,
             assetSymbol: child.type === "Image" && child.assetId ? assetById.get(child.assetId)?.symbolName : undefined,
             assetMacro: child.type === "Image" && child.assetId ? assetById.get(child.assetId)?.macroName : undefined,
+            value: child.value,
+            checked: child.checked,
             visible: child.visible !== false,
             eventBindings: child.eventBindings,
           });

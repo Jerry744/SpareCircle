@@ -221,6 +221,13 @@ export function generateUiEventsSource(ir: LvglProjectIR): string {
 
   const actionObjects: string[] = [];
   const registrationLines: string[] = ["void ui_events_init(void) {"];
+  const widgetCNameById = new Map<string, string>();
+
+  for (const screen of ir.screens) {
+    for (const widget of screen.widgets) {
+      widgetCNameById.set(widget.id, widget.cName);
+    }
+  }
 
   for (const screen of ir.screens) {
     for (const widget of screen.widgets) {
@@ -247,9 +254,10 @@ export function generateUiEventsSource(ir: LvglProjectIR): string {
           actionObjects.push("};");
         } else {
           const targetWidgetId = binding.action.targetWidgetId;
+          const targetWidgetCName = widgetCNameById.get(targetWidgetId);
           actionObjects.push(`static const sc_event_action_t ${actionName} = {`);
           actionObjects.push(`  .type = SC_EVENT_ACTION_TOGGLE_VISIBILITY,`);
-          actionObjects.push(`  .target_widget = &${targetWidgetId},`);
+          actionObjects.push(`  .target_widget = ${targetWidgetCName ? `&${targetWidgetCName}` : "NULL"},`);
           actionObjects.push("};");
         }
 

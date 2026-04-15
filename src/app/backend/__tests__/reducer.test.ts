@@ -344,6 +344,69 @@ describe("editorReducer screen lifecycle", () => {
     expect(bound.project.widgetsById[sliderId].eventBindings?.value_changed?.event).toBe("value_changed");
   });
 
+  it("adds a Switch widget with correct defaults", () => {
+    const state = createState();
+    const next = editorReducer(state, {
+      type: "addWidget",
+      parentId: "Panel1",
+      widgetType: "Switch",
+      x: 10,
+      y: 10,
+    });
+
+    const switchId = next.selectedWidgetIds[0];
+    expect(switchId).toBeDefined();
+    const sw = next.project.widgetsById[switchId];
+    expect(sw.type).toBe("Switch");
+    expect(sw.fill).toBe("#22c55e");
+    expect(sw.width).toBe(60);
+    expect(sw.height).toBe(32);
+    expect(next.project.widgetsById.Panel1.childrenIds).toContain(switchId);
+  });
+
+  it("Switch supports undo after add", () => {
+    const state = createState();
+    const withSwitch = editorReducer(state, {
+      type: "addWidget",
+      parentId: "Panel1",
+      widgetType: "Switch",
+      x: 10,
+      y: 10,
+    });
+    const switchId = withSwitch.selectedWidgetIds[0];
+
+    const undone = editorReducer(withSwitch, { type: "undo" });
+    expect(undone.project.widgetsById[switchId]).toBeUndefined();
+    expect(undone.project.widgetsById.Panel1.childrenIds).not.toContain(switchId);
+  });
+
+  it("binds value_changed event on Switch", () => {
+    const state = createState();
+    const withScreen = editorReducer(state, { type: "createScreen" });
+    const withSwitch = editorReducer(withScreen, {
+      type: "addWidget",
+      parentId: "Panel1",
+      widgetType: "Switch",
+      x: 10,
+      y: 10,
+    });
+    const switchId = withSwitch.selectedWidgetIds[0];
+
+    const bound = editorReducer(withSwitch, {
+      type: "upsertWidgetEventBinding",
+      widgetId: switchId,
+      binding: {
+        event: "value_changed",
+        action: {
+          type: "switch_screen",
+          targetScreenId: withScreen.project.activeScreenId,
+        },
+      },
+    });
+
+    expect(bound.project.widgetsById[switchId].eventBindings?.value_changed?.event).toBe("value_changed");
+  });
+
   it("rejects invalid event binding targets and prunes deleted references", () => {
     const state = createState();
 

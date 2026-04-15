@@ -11,8 +11,8 @@
 
   - Core visual editor interactions are available (canvas, selection, move, resize).
   - Widget insert and hierarchy sync are implemented.
-  - Inspector/property roundtrip and project serialization are in progress.
-  - Export pipeline and multi-screen workflow are under iterative development.
+  - Demo 1-9 milestones are completed (core editor loop to project save/load + versioning).
+  - Current focus is production hardening: UX polish, stable widget behavior, and export reliability.
 
   Planned milestones are tracked in [TODO.md](TODO.md).
 
@@ -72,10 +72,9 @@
 
   See [TODO.md](TODO.md) for phased milestone planning, including:
 
-  - Inspector two-way binding completion
-  - Multi-screen editing lifecycle
-  - Minimal LVGL C export
-  - Style token system and event mapping
+  - Post-Demo9 quality hardening and usability improvements
+  - Export compatibility validation (including constrained color displays)
+  - Backend path consolidation for local-first and server-first modes
 
   ## License
 

@@ -159,7 +159,7 @@ export function CanvasViewport() {
 
     ctx.save();
 
-    if (fill !== "transparent" && widget.type !== "Slider") {
+    if (fill !== "transparent" && widget.type !== "Slider" && widget.type !== "Switch") {
       ctx.fillStyle = fill;
       if (radius > 0) {
         drawRoundedRect(ctx, absX, absY, widget.width, widget.height, radius);
@@ -222,21 +222,46 @@ export function CanvasViewport() {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(widget.text ?? widget.name, absX + widget.width / 2, absY + widget.height / 2);
+    } else if (widget.type === "Switch") {
+      const isOn = widget.checked === true;
+      const trackR = widget.height / 2;
+      const knobR = trackR - 3;
+      const knobX = isOn ? absX + widget.width - trackR : absX + trackR;
+      const knobY = absY + widget.height / 2;
+      // Track: fill color when on, dark gray when off
+      ctx.fillStyle = isOn ? resolveWidgetColor(project, widget, "fill") : "#4b5563";
+      drawRoundedRect(ctx, absX, absY, widget.width, widget.height, trackR);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.15)";
+      ctx.lineWidth = 1;
+      drawRoundedRect(ctx, absX, absY, widget.width, widget.height, trackR);
+      ctx.stroke();
+      // Knob
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(knobX, knobY, knobR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.12)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
     } else if (widget.type === "Slider") {
+      const pct = Math.max(0, Math.min(100, widget.value ?? 0)) / 100;
       const trackH = Math.max(4, Math.round(widget.height * 0.3));
       const trackY = absY + (widget.height - trackH) / 2;
       const knobR = Math.min(widget.height / 2 - 1, trackH + 4);
-      const indicatorW = Math.round(widget.width * 0.5);
+      const indicatorW = Math.round(widget.width * pct);
       const trackR = trackH / 2;
       // Track background (opaque dark gray so it fully covers the canvas beneath)
       ctx.fillStyle = "#374151";
       drawRoundedRect(ctx, absX, trackY, widget.width, trackH, trackR);
       ctx.fill();
-      // Indicator (filled portion)
-      ctx.fillStyle = resolveWidgetColor(project, widget, "fill");
-      drawRoundedRect(ctx, absX, trackY, indicatorW, trackH, trackR);
-      ctx.fill();
-      // Knob
+      // Indicator (filled portion, width driven by value 0-100)
+      if (indicatorW >= trackH) {
+        ctx.fillStyle = resolveWidgetColor(project, widget, "fill");
+        drawRoundedRect(ctx, absX, trackY, indicatorW, trackH, trackR);
+        ctx.fill();
+      }
+      // Knob positioned at indicator end
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
       ctx.arc(absX + indicatorW, absY + widget.height / 2, knobR, 0, Math.PI * 2);

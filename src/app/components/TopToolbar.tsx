@@ -19,6 +19,7 @@ import { StyleTokensDialog } from "./StyleTokensDialog";
 
 export function TopToolbar() {
   const [importError, setImportError] = useState<string | null>(null);
+  const [importWarning, setImportWarning] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [tokensOpen, setTokensOpen] = useState(false);
   const {
@@ -41,6 +42,11 @@ export function TopToolbar() {
       }
 
       const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        return;
+      }
+
       if (key === "z" && !event.shiftKey) {
         event.preventDefault();
         if (canUndo) {
@@ -72,6 +78,7 @@ export function TopToolbar() {
 
     URL.revokeObjectURL(url);
     setImportError(null);
+    setImportWarning(null);
     setExportError(null);
   };
 
@@ -84,10 +91,12 @@ export function TopToolbar() {
     const result = hydrateProject(pasted);
     if (!result.ok) {
       setImportError(result.error);
+      setImportWarning(null);
       return;
     }
 
     setImportError(null);
+    setImportWarning(result.warning ?? null);
     setExportError(null);
   };
 
@@ -100,6 +109,7 @@ export function TopToolbar() {
 
     setExportError(null);
     setImportError(null);
+    setImportWarning(null);
   };
 
   return (
@@ -203,6 +213,11 @@ export function TopToolbar() {
       {!importError && exportError ? (
         <div className="absolute right-3 -bottom-7 text-[11px] text-rose-400 bg-[#2c2c2c] px-2 py-1 rounded border border-[#4b1f27]">
           Export failed: {exportError}
+        </div>
+      ) : null}
+      {!importError && !exportError && importWarning ? (
+        <div className="absolute right-3 -bottom-7 text-[11px] text-amber-300 bg-[#2c2c2c] px-2 py-1 rounded border border-[#5c4314]">
+          Imported with migration warning: {importWarning}
         </div>
       ) : null}
       <StyleTokensDialog open={tokensOpen} onOpenChange={setTokensOpen} />

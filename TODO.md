@@ -187,14 +187,14 @@ This checklist focuses on the most important demos needed to move from a fronten
   - [x] Events 支持 `value_changed`
   - [x] reducer + codegen 测试补齐
 
-- [ ] Switch — 开关
-  - [ ] 注册 INSERTABLE_WIDGET_TYPES
-  - [ ] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（建议 60×32，fill #22c55e）
-  - [ ] Canvas 渲染（轨道 + 圆形滑块，off/on 状态视觉区分）
-  - [ ] Inspector 可编辑（x/y/w/h/fill/visible）
-  - [ ] IR kind `switch` + `emitSwitch`（`lv_switch_create`）
-  - [ ] Events 支持 `value_changed`
-  - [ ] reducer + codegen 测试补齐
+- [x] Switch — 开关
+  - [x] 注册 INSERTABLE_WIDGET_TYPES
+  - [x] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（60×32，fill #22c55e）
+  - [x] Canvas 渲染（pill 轨道 + 白色圆形 knob，knob 靠右表示 on）
+  - [x] Inspector 可编辑（x/y/w/h/fill/visible）
+  - [x] IR kind `switch` + `emitSwitch`（`lv_switch_create` + `LV_PART_INDICATOR | LV_STATE_CHECKED`）
+  - [x] Events 支持 `value_changed`
+  - [x] reducer + codegen 测试补齐
 
 ### 第二批：选择类控件
 

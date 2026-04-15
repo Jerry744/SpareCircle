@@ -22,6 +22,7 @@ import { MATERIAL_COLOR_PRESET } from "../constants/designTokens";
 
 const SUPPORTED_ASSET_MIME_TYPES: ReadonlySet<AssetMimeType> = new Set(["image/png", "image/jpeg", "image/gif"]);
 export const MAX_ASSET_SIZE_BYTES = 1024 * 1024;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 1;
 
 type LegacyWidgetNode = Omit<WidgetNode, "parentId" | "childrenIds"> & { children: LegacyWidgetNode[] };
 
@@ -40,6 +41,42 @@ type LegacyProjectSnapshot = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function parseSchemaVersion(input: unknown):
+  | { ok: true; schemaVersion: number; warning?: string }
+  | { ok: false; error: string } {
+  if (input === undefined) {
+    return {
+      ok: true,
+      schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
+      warning: `Project is missing schemaVersion. Treated as legacy and upgraded to v${CURRENT_PROJECT_SCHEMA_VERSION}.`,
+    };
+  }
+
+  if (typeof input !== "number" || !Number.isInteger(input) || input <= 0) {
+    return { ok: false, error: "Project.schemaVersion must be a positive integer" };
+  }
+
+  if (input > CURRENT_PROJECT_SCHEMA_VERSION) {
+    return {
+      ok: false,
+      error: `Project schema v${input} is newer than supported v${CURRENT_PROJECT_SCHEMA_VERSION}`,
+    };
+  }
+
+  if (input < CURRENT_PROJECT_SCHEMA_VERSION) {
+    return {
+      ok: true,
+      schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
+      warning: `Project schema v${input} upgraded to v${CURRENT_PROJECT_SCHEMA_VERSION}.`,
+    };
+  }
+
+  return {
+    ok: true,
+    schemaVersion: input,
+  };
 }
 
 function isAssetMimeType(value: unknown): value is AssetMimeType {
@@ -181,7 +218,9 @@ export function isEditableWidgetProperty(value: unknown): value is EditableWidge
     || value === "text"
     || value === "fill"
     || value === "textColor"
-    || value === "visible";
+    || value === "visible"
+    || value === "value"
+    || value === "checked";
 }
 
 export function isValidHexColorString(value: string): boolean {
@@ -260,8 +299,15 @@ export function normalizeEditableWidgetPropertyValue(
   propertyName: EditableWidgetProperty,
   value: EditableWidgetPropertyValue,
 ): EditableWidgetPropertyValue | null {
-  if (propertyName === "visible") {
+  if (propertyName === "visible" || propertyName === "checked") {
     return typeof value === "boolean" ? value : null;
+  }
+
+  if (propertyName === "value") {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return null;
+    }
+    return Math.max(0, Math.min(100, Math.round(value)));
   }
 
   if (propertyName === "text") {
@@ -359,6 +405,8 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
   const maybeTextColorTokenId = input.textColorTokenId;
   const maybeRadius = input.radius;
   const maybeAssetId = input.assetId;
+  const maybeValue = input.value;
+  const maybeChecked = input.checked;
   const maybeVisible = input.visible;
   const maybeLocked = input.locked;
   const maybeEventBindings = input.eventBindings;
@@ -383,6 +431,12 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
   }
   if (maybeAssetId !== undefined && !isValidAssetId(maybeAssetId)) {
     return { ok: false, error: `${path}.assetId must match asset id format when provided` };
+  }
+  if (maybeValue !== undefined && (typeof maybeValue !== "number" || !Number.isFinite(maybeValue) || maybeValue < 0 || maybeValue > 100)) {
+    return { ok: false, error: `${path}.value must be a number between 0 and 100 when provided` };
+  }
+  if (maybeChecked !== undefined && typeof maybeChecked !== "boolean") {
+    return { ok: false, error: `${path}.checked must be a boolean when provided` };
   }
   if (maybeVisible !== undefined && typeof maybeVisible !== "boolean") {
     return { ok: false, error: `${path}.visible must be a boolean when provided` };
@@ -415,6 +469,8 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
       textColorTokenId: maybeTextColorTokenId,
       radius: maybeRadius,
       assetId: maybeAssetId,
+      value: maybeValue as number | undefined,
+      checked: maybeChecked as boolean | undefined,
       visible: maybeVisible,
       locked: maybeLocked,
       eventBindings: parsedEventBindings.eventBindings,
@@ -542,12 +598,16 @@ function parseStyleTokens(input: unknown): { ok: true; tokens: StyleToken[] } | 
   return { ok: true, tokens };
 }
 
-function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSnapshot } | { ok: false; error: string } {
+function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSnapshot; warning?: string } | { ok: false; error: string } {
   if (!isRecord(input)) {
     return { ok: false, error: "Project must be an object" };
   }
 
   const { screens, activeScreenId, widgetsById } = input;
+  const schemaVersionResult = parseSchemaVersion(input.schemaVersion);
+  if (!schemaVersionResult.ok) {
+    return schemaVersionResult;
+  }
   const styleTokensResult = parseStyleTokens(input.styleTokens);
   if (!styleTokensResult.ok) {
     return styleTokensResult;
@@ -682,12 +742,14 @@ function parseNormalizedProject(input: unknown): { ok: true; project: ProjectSna
   return {
     ok: true,
     project: {
+      schemaVersion: schemaVersionResult.schemaVersion,
       screens: parsedScreens,
       activeScreenId,
       widgetsById: parsedWidgets,
       styleTokens: styleTokensResult.tokens,
       assets: assetsResult.assets,
     },
+    warning: schemaVersionResult.warning,
   };
 }
 
@@ -795,7 +857,7 @@ function flattenLegacyTree(
   }
 }
 
-function parseLegacyProject(input: unknown): { ok: true; project: ProjectSnapshot } | { ok: false; error: string } {
+function parseLegacyProject(input: unknown): { ok: true; project: ProjectSnapshot; warning: string } | { ok: false; error: string } {
   if (!isRecord(input)) {
     return { ok: false, error: "Project must be an object" };
   }
@@ -862,16 +924,18 @@ function parseLegacyProject(input: unknown): { ok: true; project: ProjectSnapsho
   return {
     ok: true,
     project: {
+      schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
       screens,
       activeScreenId,
       widgetsById,
       styleTokens: [],
       assets: {},
     },
+    warning: `Legacy project format upgraded to schema v${CURRENT_PROJECT_SCHEMA_VERSION}.`,
   };
 }
 
-function parseProjectSnapshot(input: unknown): { ok: true; project: ProjectSnapshot } | { ok: false; error: string } {
+function parseProjectSnapshot(input: unknown): { ok: true; project: ProjectSnapshot; warning?: string } | { ok: false; error: string } {
   const normalized = parseNormalizedProject(input);
   if (normalized.ok) {
     return normalized;
@@ -885,7 +949,7 @@ export function serializeProjectSnapshot(project: ProjectSnapshot): string {
 }
 
 export function deserializeProjectSnapshot(serializedProject: string):
-  | { ok: true; project: ProjectSnapshot }
+  | { ok: true; project: ProjectSnapshot; warning?: string }
   | { ok: false; error: string } {
   try {
     const parsed = JSON.parse(serializedProject) as unknown;
@@ -981,6 +1045,7 @@ export function createInitialProject(): ProjectSnapshot {
   };
 
   return {
+    schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
     activeScreenId: "screen-1",
     screens: [
       {

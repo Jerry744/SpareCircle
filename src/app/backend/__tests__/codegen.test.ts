@@ -136,6 +136,64 @@ describe("Demo5 LVGL codegen", () => {
     expect(files["ui_events.c"]).toContain("lv_obj_add_event_cb(");
   });
 
+  it("emits lv_switch_create and LV_STATE_CHECKED for Switch widget", () => {
+    const project = createInitialProject();
+    project.widgetsById.Panel1.childrenIds.push("Switch1");
+    project.widgetsById.Switch1 = {
+      id: "Switch1",
+      name: "Switch1",
+      type: "Switch",
+      parentId: "Panel1",
+      childrenIds: [],
+      x: 20,
+      y: 110,
+      width: 60,
+      height: 32,
+      fill: "#22c55e",
+      visible: true,
+    };
+
+    const files = generateLvglFiles(project);
+
+    expect(files["ui.c"]).toContain("lv_switch_create(");
+    expect(files["ui.c"]).toContain("LV_STATE_CHECKED");
+    expect(files["ui.c"]).toContain("LV_PART_INDICATOR");
+    expect(files["ui.h"]).toContain("lv_obj_t *");
+  });
+
+  it("emits value_changed event registration for Switch", () => {
+    const project = createInitialProject();
+    const screen = project.screens[0];
+    project.widgetsById.Panel1.childrenIds.push("Switch2");
+    project.widgetsById.Switch2 = {
+      id: "Switch2",
+      name: "Switch2",
+      type: "Switch",
+      parentId: "Panel1",
+      childrenIds: [],
+      x: 20,
+      y: 110,
+      width: 60,
+      height: 32,
+      fill: "#22c55e",
+      visible: true,
+      eventBindings: {
+        value_changed: {
+          event: "value_changed",
+          action: {
+            type: "switch_screen",
+            targetScreenId: screen.id,
+          },
+        },
+      },
+    };
+
+    const files = generateLvglFiles(project);
+
+    expect(files["ui_events.c"]).toContain("LV_EVENT_VALUE_CHANGED");
+    expect(files["ui_events.c"]).toContain("lv_obj_add_event_cb(");
+  });
+
   it("emits callback stubs and event registrations for bindings", () => {
     const project = createInitialProject();
     project.widgetsById.Button1.eventBindings = {

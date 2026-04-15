@@ -25,11 +25,12 @@ import {
 
 type InspectorFieldType = "number" | "text" | "color" | "boolean";
 
+
 interface InspectorField {
   key: EditableWidgetProperty;
   label: string;
   type: InspectorFieldType;
-  section: "position" | "style" | "text" | "flags";
+  section: "position" | "style" | "text" | "flags" | "state";
   unit?: string;
   min?: number;
   max?: number;
@@ -50,6 +51,8 @@ const FIELD_CONFIG: Record<EditableWidgetProperty, InspectorField> = {
   fill: { key: "fill", label: "Background", type: "color", section: "style" },
   textColor: { key: "textColor", label: "Text Color", type: "color", section: "style" },
   visible: { key: "visible", label: "Visible", type: "boolean", section: "flags" },
+  value: { key: "value", label: "Value", type: "number", section: "state", unit: "%", min: 0, max: 100 },
+  checked: { key: "checked", label: "Checked (ON)", type: "boolean", section: "state" },
 };
 
 const WIDGET_FIELD_SCHEMA: Record<WidgetNode["type"], EditableWidgetProperty[]> = {
@@ -58,8 +61,8 @@ const WIDGET_FIELD_SCHEMA: Record<WidgetNode["type"], EditableWidgetProperty[]> 
   Panel: ["x", "y", "width", "height", "fill", "visible"],
   Label: ["x", "y", "width", "height", "text", "textColor", "visible"],
   Button: ["x", "y", "width", "height", "text", "fill", "textColor", "visible"],
-  Slider: ["x", "y", "width", "height", "fill", "visible"],
-  Switch: ["x", "y", "width", "height", "fill", "visible"],
+  Slider: ["x", "y", "width", "height", "fill", "value", "visible"],
+  Switch: ["x", "y", "width", "height", "fill", "checked", "visible"],
   Image: ["x", "y", "width", "height", "fill", "visible"],
 };
 
@@ -81,6 +84,10 @@ function getWidgetPropertyDraftValue(project: ProjectSnapshot, widget: WidgetNod
       return resolveWidgetColor(project, widget, "textColor");
     case "visible":
       return widget.visible ?? true;
+    case "value":
+      return String(widget.value ?? 0);
+    case "checked":
+      return widget.checked ?? false;
     default:
       return "";
   }
@@ -159,6 +166,7 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
     style: true,
     asset: true,
     text: true,
+    state: true,
     flags: true,
   });
   const [drafts, setDrafts] = useState<DraftMap>({});
@@ -191,6 +199,7 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
       position: activeFields.filter((field) => field.section === "position"),
       style: activeFields.filter((field) => field.section === "style"),
       text: activeFields.filter((field) => field.section === "text"),
+      state: activeFields.filter((field) => field.section === "state"),
       flags: activeFields.filter((field) => field.section === "flags"),
     }),
     [activeFields],
@@ -385,6 +394,41 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
               onChange={(assetId) => assignWidgetAsset(selectedWidget.id, assetId)}
               onDelete={(assetId) => deleteAsset(assetId)}
             />
+          </PropertySection>
+        ) : null}
+
+        {/* Initial State Section (Slider value, Switch checked) */}
+        {sectionFields.state.length > 0 ? (
+          <PropertySection
+            title="Initial State"
+            expanded={expandedSections.state}
+            onToggle={() => toggleSection("state")}
+          >
+            {sectionFields.state.map((field) =>
+              field.type === "boolean" ? (
+                <CheckboxProperty
+                  key={field.key}
+                  label={field.label}
+                  checked={Boolean(drafts[field.key])}
+                  error={errors[field.key]}
+                  onCheckedChange={(checked) => {
+                    setDraft(field, checked);
+                    commitField(field);
+                  }}
+                />
+              ) : (
+                <PropertyRow
+                  key={field.key}
+                  label={field.label}
+                  value={String(drafts[field.key] ?? "")}
+                  unit={field.unit}
+                  error={errors[field.key]}
+                  onChange={(nextValue) => setDraft(field, nextValue)}
+                  onBlur={() => commitField(field)}
+                  onKeyDown={(event) => handleInputKeyDown(event, field)}
+                />
+              ),
+            )}
           </PropertySection>
         ) : null}
 
