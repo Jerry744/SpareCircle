@@ -253,12 +253,12 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
     setErrors((prev) => ({ ...prev, [field.key]: undefined }));
   };
 
-  const commitField = (field: InspectorField) => {
+  const commitField = (field: InspectorField, draftOverride?: string | boolean) => {
     if (!selectedWidget) {
       return;
     }
 
-    const draftValue = drafts[field.key];
+    const draftValue = draftOverride ?? drafts[field.key];
     if (draftValue === undefined) {
       return;
     }
@@ -414,10 +414,7 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
                   label={field.label}
                   checked={Boolean(drafts[field.key])}
                   error={errors[field.key]}
-                  onCheckedChange={(checked) => {
-                    setDraft(field, checked);
-                    commitField(field);
-                  }}
+                  onCheckedChange={(checked) => commitField(field, checked)}
                 />
               ) : (
                 <PropertyRow
@@ -470,10 +467,7 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
               label={field.label}
               checked={Boolean(drafts[field.key])}
               error={errors[field.key]}
-              onCheckedChange={(checked) => {
-                setDraft(field, checked);
-                commitField(field);
-              }}
+              onCheckedChange={(checked) => commitField(field, checked)}
             />
           ))}
         </PropertySection>
@@ -721,16 +715,21 @@ function CheckboxProperty({
   error?: string;
   onCheckedChange: (checked: boolean) => void;
 }) {
+  const inputId = `inspector-boolean-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
         <input
+          id={inputId}
           type="checkbox"
           checked={checked}
           onChange={(event) => onCheckedChange(event.target.checked)}
           className="w-4 h-4 bg-[#252525] border border-[#3c3c3c] rounded cursor-pointer accent-[#5b9dd9]"
         />
-        <label className="text-xs text-gray-300">{label}</label>
+        <label htmlFor={inputId} className="text-xs text-gray-300 cursor-pointer">
+          {label}
+        </label>
       </div>
       {error ? <div className="text-[11px] text-rose-400">{error}</div> : null}
     </div>

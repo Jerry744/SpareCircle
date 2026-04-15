@@ -7,11 +7,13 @@ import { InspectorPanel } from "../InspectorPanel";
 function TestActions() {
   const {
     state: { project },
-    actions: { createScreen, setActiveScreen },
+    actions: { addWidget, createScreen, setActiveScreen },
   } = useEditorBackend();
 
   return (
     <div>
+      <button onClick={() => addWidget("Panel1", "Checkbox", 10, 10)}>add-checkbox</button>
+      <button onClick={() => addWidget("Panel1", "Radio", 10, 10)}>add-radio</button>
       <button onClick={() => createScreen()}>create-screen</button>
       <button
         onClick={() => {
@@ -45,5 +47,27 @@ describe("screen context isolation", () => {
 
     expect(screen.getByText("Select a widget to view properties")).toBeInTheDocument();
     expect(screen.queryByText("Button1")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["add-checkbox", "Checkbox"],
+    ["add-radio", "Radio"],
+  ])("toggles the inspector initial state for %s widgets", (buttonId) => {
+    render(
+      <EditorBackendProvider>
+        <TestActions />
+        <HierarchyPanel />
+        <InspectorPanel />
+      </EditorBackendProvider>,
+    );
+
+    fireEvent.click(screen.getByText(buttonId));
+
+    const checkedInput = screen.getByLabelText("Checked (ON)");
+    expect(checkedInput).not.toBeChecked();
+
+    fireEvent.click(checkedInput);
+
+    expect(screen.getByLabelText("Checked (ON)")).toBeChecked();
   });
 });
