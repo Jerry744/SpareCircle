@@ -18,21 +18,21 @@ This checklist focuses on the most important demos needed to move from a fronten
     - Tree order and canvas order stay consistent.
     - Parent-child nesting (container -> child widget) works.
 
-- [ ] Demo 3: Inspector Two-Way Binding
+- [x] Demo 3: Inspector Two-Way Binding
   - Goal: Confirm property editing can drive real output.
   - Done when:
     - Width/height/position/text/color updates are reflected instantly.
     - Invalid input is validated with clear UI feedback.
     - Changes are serialized into a project JSON model.
 
-- [ ] Demo 4: Multi-Screen Navigation Flow
+- [x] Demo 4: Multi-Screen Navigation Flow
   - Goal: Match basic screen workflow used by LVGL projects.
   - Done when:
     - Can create, rename, duplicate, delete screens.
     - Active screen switch updates hierarchy and inspector correctly.
     - Per-screen root settings are editable.
 
-- [ ] Demo 5: LVGL C Code Export (Minimal)
+- [x] Demo 5: LVGL C Code Export (Minimal)
   - Goal: Prove SpareCircle is more than a drawing tool.
   - Done when:
     - Export generates compilable C for common widgets (label/button/container/image).
@@ -129,21 +129,21 @@ This checklist focuses on the most important demos needed to move from a fronten
 
 ## P1 - Should Have (Practicality)
 
-- [ ] Demo 6: Style Tokens + Reusable Styles
+- [x] Demo 6: Style Tokens + Reusable Styles
   - Goal: Avoid repeated manual style edits.
   - Done when:
     - Can define named style tokens (color/spacing/radius/font).
     - Multiple widgets can reference the same style.
     - Changing token value updates all referencing widgets.
 
-- [ ] Demo 7: Event and Action Mapping
+- [x] Demo 7: Event and Action Mapping
   - Goal: Cover interactive behavior needed for real demos.
   - Done when:
     - Basic events (clicked, pressed, value_changed) can be bound.
     - Actions support at least screen switch and visibility toggle.
     - Export includes event callback stubs.
 
-- [ ] Demo 8: Asset Pipeline (Image/Font)
+- [x] Demo 8: Asset Pipeline (Image/Font)
   - Goal: Close the gap between UI prototype and firmware integration.
   - Done when:
     - Import image/font assets from UI.
@@ -152,7 +152,7 @@ This checklist focuses on the most important demos needed to move from a fronten
 
 ## P2 - Nice to Have (Polish)
 
-- [ ] Demo 9: Project Save/Load + Versioning
+- [x] Demo 9: Project Save/Load + Versioning
   - Goal: Allow iteration and collaboration.
   - Done when:
     - Save and reload full project state from JSON.
@@ -171,3 +171,115 @@ This checklist focuses on the most important demos needed to move from a fronten
 2. Demo 4 -> Demo 5
 3. Demo 6 -> Demo 7 -> Demo 8
 4. Demo 9 -> Demo 10
+
+## Widget Unlock Backlog
+
+按照 `guidelines/Widget_Unlock_Workflow_Planning.md` 流程，逐批打通每个 widget 的 CRUD → 编辑 → 渲染 → 导出 → 测试五条链路。
+
+### 第一批：输入控件基础（成本最低，已有类型定义）
+
+- [x] Slider — 拖动条
+  - [x] 注册 INSERTABLE_WIDGET_TYPES
+  - [x] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（200×32，fill #3b82f6）
+  - [x] Canvas 渲染（track + indicator + knob）
+  - [x] Inspector 可编辑（x/y/w/h/fill/visible）
+  - [x] IR kind `slider` + `emitSlider`（`lv_slider_create` + `LV_PART_INDICATOR`）
+  - [x] Events 支持 `value_changed`
+  - [x] reducer + codegen 测试补齐
+
+- [ ] Switch — 开关
+  - [ ] 注册 INSERTABLE_WIDGET_TYPES
+  - [ ] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（建议 60×32，fill #22c55e）
+  - [ ] Canvas 渲染（轨道 + 圆形滑块，off/on 状态视觉区分）
+  - [ ] Inspector 可编辑（x/y/w/h/fill/visible）
+  - [ ] IR kind `switch` + `emitSwitch`（`lv_switch_create`）
+  - [ ] Events 支持 `value_changed`
+  - [ ] reducer + codegen 测试补齐
+
+### 第二批：选择类控件
+
+- [ ] Checkbox — 复选框
+  - [ ] 注册 INSERTABLE_WIDGET_TYPES
+  - [ ] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（建议 120×32，text "Option"）
+  - [ ] Canvas 渲染（方形勾选框 + 标签文字）
+  - [ ] Inspector 可编辑（x/y/w/h/text/fill/visible）
+  - [ ] IR kind `checkbox` + `emitCheckbox`（`lv_checkbox_create`）
+  - [ ] Events 支持 `value_changed`
+  - [ ] reducer + codegen 测试补齐
+
+- [ ] Radio — 单选按钮
+  - [ ] 注册 INSERTABLE_WIDGET_TYPES
+  - [ ] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（建议 120×32，text "Option"）
+  - [ ] Canvas 渲染（圆形选择指示 + 标签文字）
+  - [ ] Inspector 可编辑（x/y/w/h/text/fill/visible）
+  - [ ] IR kind `radio` + `emitRadio`（`lv_checkbox_create` + `lv_obj_add_style` 圆形 style）
+  - [ ] Events 支持 `value_changed`
+  - [ ] reducer + codegen 测试补齐
+
+### 第三批：复合控件
+
+- [ ] Dropdown — 下拉菜单
+  - [ ] 注册 INSERTABLE_WIDGET_TYPES
+  - [ ] `mapPaletteWidgetToType` + `createWidgetNode` 默认值（建议 160×40，text "Option 1\nOption 2\nOption 3"）
+  - [ ] Canvas 渲染（矩形框 + 箭头图标 + 当前选中文字）
+  - [ ] Inspector 可编辑（x/y/w/h/text/fill/visible）
+  - [ ] IR kind `dropdown` + `emitDropdown`（`lv_dropdown_create` + `lv_dropdown_set_options`）
+  - [ ] Events 支持 `value_changed`
+  - [ ] reducer + codegen 测试补齐
+
+### 第四批：显示类控件（暂列，优先级低于以上各批）
+
+- [ ] Arc — 弧形进度
+  - [ ] Canvas 渲染（弧线 + 值标注）
+  - [ ] `lv_arc_create` 导出
+
+- [ ] Bar — 进度条（线性）
+  - [ ] Canvas 渲染（水平填充矩形）
+  - [ ] `lv_bar_create` 导出
+
+- [ ] Grid — 网格布局容器
+  - [ ] 评估是否映射到 `lv_obj_create` + grid layout API
+  - [ ] Canvas 渲染（网格线辅助显示）
+
+- [ ] List — 列表
+  - [ ] Canvas 渲染（可滚动列表项占位）
+  - [ ] `lv_list_create` 导出
+
+- [ ] Chart — 图表（低优先级，LVGL chart API 复杂）
+- [ ] Calendar — 日历（低优先级）
+
+---
+
+## Post-Demo9 Milestones
+
+### M1: Demo 10 End-to-End Showcase
+
+- Goal: Prove the full editor-to-export loop on a realistic project.
+- Done when:
+  - A complete 3-5 screen smart-home sample can be built in the editor.
+  - Exported LVGL package runs on a sample board or simulator without manual edits.
+  - Screenshots, generated code sample, and walkthrough are publishable.
+
+### M2: Backend Split Foundation
+
+- Goal: Make local and server modes follow the same architectural path.
+- Done when:
+  - Shared domain logic is separated from the UI layer.
+  - Local persistence and remote APIs expose the same repository contract.
+  - Frontend can switch backend mode by configuration only.
+
+### M3: Collaboration Readiness
+
+- Goal: Prepare for multi-user and multi-device workflows.
+- Done when:
+  - Project save/load is versioned and migration-safe.
+  - Remote save/load works with a stable API contract.
+  - Conflict handling strategy is defined for future real-time collaboration.
+
+### M4: Production Hardening
+
+- Goal: Reduce risk before wider adoption.
+- Done when:
+  - Auto-save recovery is stable under refresh and crash scenarios.
+  - Export and persistence tests cover the main regression paths.
+  - Local-first and server-first deployments share the same schema and behavior.

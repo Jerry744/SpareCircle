@@ -258,6 +258,92 @@ describe("editorReducer screen lifecycle", () => {
     expect(deleted.project.widgetsById[imageId].assetId).toBeUndefined();
   });
 
+  it("adds a Slider widget with correct defaults", () => {
+    const state = createState();
+    const next = editorReducer(state, {
+      type: "addWidget",
+      parentId: "Panel1",
+      widgetType: "Slider",
+      x: 10,
+      y: 10,
+    });
+
+    const sliderId = next.selectedWidgetIds[0];
+    expect(sliderId).toBeDefined();
+    const slider = next.project.widgetsById[sliderId];
+    expect(slider.type).toBe("Slider");
+    expect(slider.fill).toBe("#3b82f6");
+    expect(slider.width).toBe(200);
+    expect(slider.height).toBe(32);
+    expect(next.project.widgetsById.Panel1.childrenIds).toContain(sliderId);
+  });
+
+  it("updates Slider fill property", () => {
+    const state = createState();
+    const withSlider = editorReducer(state, {
+      type: "addWidget",
+      parentId: "Panel1",
+      widgetType: "Slider",
+      x: 10,
+      y: 10,
+    });
+    const sliderId = withSlider.selectedWidgetIds[0];
+
+    const updated = editorReducer(withSlider, {
+      type: "updateWidgetProperty",
+      widgetId: sliderId,
+      propertyName: "fill",
+      value: "#ef4444",
+    });
+
+    expect(updated.project.widgetsById[sliderId].fill).toBe("#ef4444");
+  });
+
+  it("Slider supports undo after add", () => {
+    const state = createState();
+    const withSlider = editorReducer(state, {
+      type: "addWidget",
+      parentId: "Panel1",
+      widgetType: "Slider",
+      x: 10,
+      y: 10,
+    });
+    const sliderId = withSlider.selectedWidgetIds[0];
+    expect(withSlider.project.widgetsById[sliderId]).toBeDefined();
+    expect(withSlider.project.widgetsById.Panel1.childrenIds).toContain(sliderId);
+
+    const undone = editorReducer(withSlider, { type: "undo" });
+    expect(undone.project.widgetsById[sliderId]).toBeUndefined();
+    expect(undone.project.widgetsById.Panel1.childrenIds).not.toContain(sliderId);
+  });
+
+  it("binds value_changed event on Slider", () => {
+    const state = createState();
+    const withScreen = editorReducer(state, { type: "createScreen" });
+    const withSlider = editorReducer(withScreen, {
+      type: "addWidget",
+      parentId: "Panel1",
+      widgetType: "Slider",
+      x: 10,
+      y: 10,
+    });
+    const sliderId = withSlider.selectedWidgetIds[0];
+
+    const bound = editorReducer(withSlider, {
+      type: "upsertWidgetEventBinding",
+      widgetId: sliderId,
+      binding: {
+        event: "value_changed",
+        action: {
+          type: "switch_screen",
+          targetScreenId: withScreen.project.activeScreenId,
+        },
+      },
+    });
+
+    expect(bound.project.widgetsById[sliderId].eventBindings?.value_changed?.event).toBe("value_changed");
+  });
+
   it("rejects invalid event binding targets and prunes deleted references", () => {
     const state = createState();
 

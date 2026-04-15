@@ -78,6 +78,64 @@ describe("Demo5 LVGL codegen", () => {
     expect(files["ui.c"]).toContain("SC_TOKEN_PRIMARY");
   });
 
+  it("emits lv_slider_create and LV_PART_INDICATOR for Slider widget", () => {
+    const project = createInitialProject();
+    project.widgetsById.Panel1.childrenIds.push("Slider1");
+    project.widgetsById.Slider1 = {
+      id: "Slider1",
+      name: "Slider1",
+      type: "Slider",
+      parentId: "Panel1",
+      childrenIds: [],
+      x: 20,
+      y: 100,
+      width: 200,
+      height: 32,
+      fill: "#3b82f6",
+      visible: true,
+    };
+
+    const files = generateLvglFiles(project);
+
+    expect(files["ui.c"]).toContain("lv_slider_create(");
+    expect(files["ui.c"]).toContain("lv_slider_set_value(");
+    expect(files["ui.c"]).toContain("LV_PART_INDICATOR");
+    expect(files["ui.h"]).toContain("lv_obj_t *");
+  });
+
+  it("emits value_changed event registration for Slider", () => {
+    const project = createInitialProject();
+    const secondScreen = project.screens[0];
+    project.widgetsById.Panel1.childrenIds.push("Slider2");
+    project.widgetsById.Slider2 = {
+      id: "Slider2",
+      name: "Slider2",
+      type: "Slider",
+      parentId: "Panel1",
+      childrenIds: [],
+      x: 20,
+      y: 100,
+      width: 200,
+      height: 32,
+      fill: "#3b82f6",
+      visible: true,
+      eventBindings: {
+        value_changed: {
+          event: "value_changed",
+          action: {
+            type: "switch_screen",
+            targetScreenId: secondScreen.id,
+          },
+        },
+      },
+    };
+
+    const files = generateLvglFiles(project);
+
+    expect(files["ui_events.c"]).toContain("LV_EVENT_VALUE_CHANGED");
+    expect(files["ui_events.c"]).toContain("lv_obj_add_event_cb(");
+  });
+
   it("emits callback stubs and event registrations for bindings", () => {
     const project = createInitialProject();
     project.widgetsById.Button1.eventBindings = {
@@ -97,6 +155,11 @@ describe("Demo5 LVGL codegen", () => {
       },
     };
 
+    const ir = projectToLvglIR(project);
+    const targetWidget = ir.screens
+      .flatMap((screen) => screen.widgets)
+      .find((widget) => widget.id === "TempLabel");
+
     const files = generateLvglFiles(project);
 
     expect(files["ui_events.c"]).toContain("void ui_events_init(void)");
@@ -105,6 +168,9 @@ describe("Demo5 LVGL codegen", () => {
     expect(files["ui_events.c"]).toContain("LV_EVENT_PRESSED");
     expect(files["ui_events.c"]).toContain("lv_screen_load");
     expect(files["ui_events.c"]).toContain("LV_OBJ_FLAG_HIDDEN");
+    expect(targetWidget).toBeDefined();
+    expect(files["ui_events.c"]).toContain(`.target_widget = &${targetWidget?.cName},`);
+    expect(files["ui_events.c"]).not.toContain(".target_widget = &TempLabel,");
     expect(files["ui.c"]).toContain("ui_events_init();");
   });
 });

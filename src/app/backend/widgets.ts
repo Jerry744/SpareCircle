@@ -12,6 +12,7 @@ export function mapPaletteWidgetToType(widgetId: string): WidgetType | null {
     panel: "Panel",
     label: "Label",
     button: "Button",
+    slider: "Slider",
     image: "Image",
   };
 
@@ -33,6 +34,8 @@ function getDefaultWidgetSize(widgetType: WidgetType): { width: number; height: 
       return { width: 140, height: 32 };
     case "Button":
       return { width: 96, height: 40 };
+    case "Slider":
+      return { width: 200, height: 32 };
     case "Image":
       return { width: 120, height: 120 };
     default:
@@ -87,6 +90,21 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
       fill: "#3b82f6",
       textColor: "#ffffff",
       radius: 10,
+    };
+  }
+
+  if (widgetType === "Slider") {
+    return {
+      id,
+      name: "Slider",
+      type: "Slider",
+      parentId: null,
+      childrenIds: [],
+      x,
+      y,
+      width: baseSize.width,
+      height: baseSize.height,
+      fill: "#3b82f6",
     };
   }
 

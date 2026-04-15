@@ -1,7 +1,7 @@
 import { buildWidgetTree } from "../tree";
 import type { ProjectSnapshot, WidgetNode, WidgetEventBindings } from "../types";
 
-export type LvglWidgetKind = "container" | "label" | "button" | "image";
+export type LvglWidgetKind = "container" | "label" | "button" | "slider" | "image";
 
 export interface LvglWidgetIR {
   id: string;
@@ -106,6 +106,8 @@ function widgetKindFromNode(node: WidgetNode): LvglWidgetKind | null {
       return "label";
     case "Button":
       return "button";
+    case "Slider":
+      return "slider";
     case "Image":
       return "image";
     default:

@@ -77,6 +77,7 @@ export interface ScreenModel {
 }
 
 export interface ProjectSnapshot {
+  schemaVersion: number;
   screens: ScreenModel[];
   activeScreenId: string;
   widgetsById: Record<string, WidgetNode>;
@@ -84,7 +85,7 @@ export interface ProjectSnapshot {
   assets: Record<string, AssetItem>;
 }
 
-export type HydrateProjectResult = { ok: true } | { ok: false; error: string };
+export type HydrateProjectResult = { ok: true; warning?: string } | { ok: false; error: string };
 export type ExportLvglResult = { ok: true; fileName: string } | { ok: false; error: string };
 
 export interface HistoryState {
@@ -168,7 +169,7 @@ export const WIDGET_EDITABLE_PROPERTIES: Record<WidgetType, ReadonlySet<Editable
   Image: new Set(["x", "y", "width", "height", "fill", "visible"]),
 };
 
-export const INSERTABLE_WIDGET_TYPES: WidgetType[] = ["Container", "Panel", "Label", "Button", "Image"];
+export const INSERTABLE_WIDGET_TYPES: WidgetType[] = ["Container", "Panel", "Label", "Button", "Slider", "Image"];
 
 export const CONTAINER_WIDGET_TYPES = new Set<WidgetType>(["Screen", "Container", "Panel"]);
 

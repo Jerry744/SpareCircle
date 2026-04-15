@@ -68,6 +68,26 @@ export function emitButton(widget: LvglWidgetIR): string {
   return lines.join("\n");
 }
 
+export function emitSlider(widget: LvglWidgetIR): string {
+  const lines = [
+    `  ${widget.cName} = lv_slider_create(${widget.parentCName});`,
+    `  lv_slider_set_value(${widget.cName}, 50, LV_ANIM_OFF);`,
+    `  lv_obj_set_pos(${widget.cName}, ${widget.x}, ${widget.y});`,
+    `  lv_obj_set_size(${widget.cName}, ${widget.width}, ${widget.height});`,
+  ];
+
+  if (widget.fillExpression) {
+    lines.push(`  lv_obj_set_style_bg_color(${widget.cName}, ${widget.fillExpression}, LV_PART_INDICATOR);`);
+    lines.push(`  lv_obj_set_style_bg_opa(${widget.cName}, LV_OPA_COVER, LV_PART_INDICATOR);`);
+  }
+
+  if (!widget.visible) {
+    lines.push(`  lv_obj_add_flag(${widget.cName}, LV_OBJ_FLAG_HIDDEN);`);
+  }
+
+  return lines.join("\n");
+}
+
 export function emitImage(widget: LvglWidgetIR): string {
   const lines = [
     `  ${widget.cName} = lv_image_create(${widget.parentCName});`,
@@ -86,6 +106,8 @@ export function emitWidget(widget: LvglWidgetIR): string {
       return emitLabel(widget);
     case "button":
       return emitButton(widget);
+    case "slider":
+      return emitSlider(widget);
     case "image":
       return emitImage(widget);
     default:
