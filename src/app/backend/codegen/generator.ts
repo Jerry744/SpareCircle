@@ -1,10 +1,20 @@
 import JSZip from "jszip";
-import type { ProjectSnapshot } from "../types";
-import { projectToLvglIR, type LvglProjectIR } from "./ir";
+import type { ColorFormat, ProjectSnapshot } from "../types";
+import { hexToColorExpression, projectToLvglIR, type LvglProjectIR } from "./ir";
 import { emitWidget } from "./emitters";
 
 function sanitizeScreenComment(name: string): string {
   return name.replace(/[\r\n]+/g, " ").trim() || "Screen";
+}
+
+function colorDepthValue(format: ColorFormat): number {
+  switch (format) {
+    case "monochrome": return 1;
+    case "grayscale8": return 8;
+    case "rgb565": return 16;
+    case "rgb888": return 24;
+    case "argb8888": return 32;
+  }
 }
 
 function assetExtensionFromMimeType(mimeType: string): string {
@@ -67,6 +77,9 @@ export function generateUiHeader(ir: LvglProjectIR): string {
     "extern \"C\" {",
     "#endif",
     "",
+    `/* Color depth: ${colorDepthValue(ir.colorFormat)}-bit (${ir.colorFormat}) */`,
+    `#define LV_COLOR_DEPTH ${colorDepthValue(ir.colorFormat)}`,
+    "",
     "#include \"lvgl.h\"",
     "",
   ];
@@ -127,7 +140,7 @@ export function generateUiSource(ir: LvglProjectIR): string {
     lines.push(`  lv_obj_set_size(${screen.cName}, ${screen.width}, ${screen.height});`);
     lines.push(`  lv_obj_clear_flag(${screen.cName}, LV_OBJ_FLAG_SCROLLABLE);`);
     if (screen.fill) {
-      lines.push(`  lv_obj_set_style_bg_color(${screen.cName}, lv_color_hex(0x${screen.fill.slice(1)}), LV_PART_MAIN);`);
+      lines.push(`  lv_obj_set_style_bg_color(${screen.cName}, ${hexToColorExpression(screen.fill, ir.colorFormat)}, LV_PART_MAIN);`);
       lines.push(`  lv_obj_set_style_bg_opa(${screen.cName}, LV_OPA_COVER, LV_PART_MAIN);`);
     }
 

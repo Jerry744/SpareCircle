@@ -306,7 +306,20 @@ function ExportPanel() {
   );
 }
 
+const COLOR_FORMAT_OPTIONS = [
+  { value: "monochrome", label: "1-bit (Monochrome)" },
+  { value: "grayscale8", label: "8-bit (Grayscale)" },
+  { value: "rgb565", label: "16-bit (RGB565)" },
+  { value: "rgb888", label: "24-bit (RGB888)" },
+  { value: "argb8888", label: "32-bit (ARGB8888)" },
+] as const;
+
 function SettingsPanel() {
+  const {
+    state: { project },
+    actions: { setColorFormat },
+  } = useEditorBackend();
+
   return (
     <div>
       <div className="text-sm font-semibold mb-3 text-gray-200">Project Settings</div>
@@ -335,12 +348,23 @@ function SettingsPanel() {
           </div>
         </div>
         <div>
-          <label className="text-xs text-gray-400 mb-1 block">Color Depth</label>
-          <select className="w-full px-3 py-2 bg-[#252525] border border-[#3c3c3c] rounded text-sm focus:border-[#5b9dd9] outline-none cursor-pointer text-gray-200">
-            <option>16-bit (RGB565)</option>
-            <option>24-bit (RGB888)</option>
-            <option>32-bit (ARGB8888)</option>
+          <label className="text-xs text-gray-400 mb-1 block">Color Format</label>
+          <select
+            value={project.colorFormat ?? "rgb888"}
+            onChange={(e) => setColorFormat(e.target.value as typeof COLOR_FORMAT_OPTIONS[number]["value"])}
+            className="w-full px-3 py-2 bg-[#252525] border border-[#3c3c3c] rounded text-sm focus:border-[#5b9dd9] outline-none cursor-pointer text-gray-200"
+          >
+            {COLOR_FORMAT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
           </select>
+          {(project.colorFormat === "monochrome" || project.colorFormat === "grayscale8") && (
+            <p className="mt-1 text-xs text-yellow-400">
+              {project.colorFormat === "monochrome"
+                ? "Colors will be quantized to black or white based on luminance."
+                : "Colors will be converted to 8-bit grayscale."}
+            </p>
+          )}
         </div>
         <div>
           <label className="text-xs text-gray-400 mb-1 block">Target Platform</label>

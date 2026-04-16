@@ -1,5 +1,5 @@
 import { buildWidgetTree } from "../tree";
-import type { ProjectSnapshot, WidgetNode, WidgetEventBindings } from "../types";
+import type { ColorFormat, ProjectSnapshot, WidgetNode, WidgetEventBindings } from "../types";
 
 export type LvglWidgetKind = "container" | "label" | "button" | "slider" | "switch" | "checkbox" | "radio" | "dropdown" | "image";
 
@@ -49,6 +49,7 @@ export interface LvglProjectIR {
   activeScreenCName: string;
   styleTokenMacros: Array<{ name: string; expression: string }>;
   assets: LvglAssetIR[];
+  colorFormat: ColorFormat;
 }
 
 function sanitizeToken(value: string): string {
@@ -101,6 +102,41 @@ function normalizeHexColor(value?: string): string | undefined {
   return undefined;
 }
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) {
+    return null;
+  }
+  const r = parseInt(normalized.slice(1, 3), 16);
+  const g = parseInt(normalized.slice(3, 5), 16);
+  const b = parseInt(normalized.slice(5, 7), 16);
+  return { r, g, b };
+}
+
+export function hexToColorExpression(hex: string, format: ColorFormat): string {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) {
+    return `lv_color_hex(0x${hex.slice(1).toUpperCase()})`;
+  }
+  if (format === "monochrome") {
+    const rgb = hexToRgb(normalized);
+    if (!rgb) {
+      return "lv_color_white()";
+    }
+    const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+    return luminance >= 128 ? "lv_color_white()" : "lv_color_black()";
+  }
+  if (format === "grayscale8") {
+    const rgb = hexToRgb(normalized);
+    if (!rgb) {
+      return "lv_color_make(128, 128, 128)";
+    }
+    const gray = Math.round(0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b);
+    return `lv_color_make(${gray}, ${gray}, ${gray})`;
+  }
+  return `lv_color_hex(0x${normalized.slice(1)})`;
+}
+
 function widgetKindFromNode(node: WidgetNode): LvglWidgetKind | null {
   switch (node.type) {
     case "Container":
@@ -142,6 +178,7 @@ export function createDeterministicName(base: string, used: Set<string>): string
 }
 
 export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
+  const colorFormat: ColorFormat = project.colorFormat ?? "rgb888";
   const usedNames = new Set<string>();
   const usedMacroNames = new Set<string>();
   const usedAssetSymbols = new Set<string>();
@@ -165,7 +202,7 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
     tokenMacroById.set(token.id, macroName);
     return {
       name: macroName,
-      expression: `lv_color_hex(0x${token.value.slice(1).toUpperCase()})`,
+      expression: hexToColorExpression(token.value, colorFormat),
     };
   });
   const screens: LvglScreenIR[] = [];
@@ -191,12 +228,12 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
           const fillExpression = child.fillTokenId
             ? tokenMacroById.get(child.fillTokenId)
             : normalizeHexColor(child.fill)
-              ? `lv_color_hex(0x${normalizeHexColor(child.fill)!.slice(1)})`
+              ? hexToColorExpression(child.fill!, colorFormat)
               : undefined;
           const textColorExpression = child.textColorTokenId
             ? tokenMacroById.get(child.textColorTokenId)
             : normalizeHexColor(child.textColor)
-              ? `lv_color_hex(0x${normalizeHexColor(child.textColor)!.slice(1)})`
+              ? hexToColorExpression(child.textColor!, colorFormat)
               : undefined;
 
           const radioText = child.type === "Radio" && child.options?.length
@@ -250,5 +287,6 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
     activeScreenCName: activeScreen?.cName ?? "ui_screen",
     styleTokenMacros,
     assets,
+    colorFormat,
   };
 }

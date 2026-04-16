@@ -22,6 +22,7 @@ import { loadActiveProjectFromIndexedDb, saveActiveProjectToIndexedDb } from "./
 import type {
   AssetItem,
   AssetMimeType,
+  ColorFormat,
   EventBinding,
   EditableWidgetProperty,
   EditableWidgetPropertyValue,
@@ -191,6 +192,7 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "removeWidgetEventBinding", widgetId, event }),
       updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) =>
         dispatch({ type: "updateScreenMeta", screenId, key, value }),
+      setColorFormat: (format: ColorFormat) => dispatch({ type: "setColorFormat", format }),
       serializeProject: () => serializeProjectSnapshot(state.project),
       hydrateProject: (serializedProject: string): HydrateProjectResult => {
         const result = deserializeProjectSnapshot(serializedProject);

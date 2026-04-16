@@ -308,7 +308,10 @@ export function removeSubtree(project: ProjectSnapshot, rootNodeId: string): Pro
   const nextWidgetsById: Record<string, WidgetNode> = {};
   for (const [id, widget] of Object.entries(project.widgetsById)) {
     if (!toDelete.has(id)) {
-      nextWidgetsById[id] = widget;
+      nextWidgetsById[id] = {
+        ...widget,
+        childrenIds: widget.childrenIds.filter((childId) => !toDelete.has(childId)),
+      };
     }
   }
 

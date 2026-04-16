@@ -27,6 +27,8 @@ export type WidgetEventBindings = Partial<Record<WidgetEventType, EventBinding>>
 
 export type StyleTokenType = "color";
 
+export type ColorFormat = "monochrome" | "grayscale8" | "rgb565" | "rgb888" | "argb8888";
+
 export interface StyleToken {
   id: string;
   name: string;
@@ -87,6 +89,7 @@ export interface ProjectSnapshot {
   widgetsById: Record<string, WidgetNode>;
   styleTokens: StyleToken[];
   assets: Record<string, AssetItem>;
+  colorFormat?: ColorFormat;
 }
 
 export type HydrateProjectResult = { ok: true; warning?: string } | { ok: false; error: string };
@@ -153,6 +156,7 @@ export interface EditorBackendValue {
     upsertWidgetEventBinding: (widgetId: string, binding: EventBinding) => void;
     removeWidgetEventBinding: (widgetId: string, event: WidgetEventType) => void;
     updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) => void;
+    setColorFormat: (format: ColorFormat) => void;
     serializeProject: () => string;
     hydrateProject: (serializedProject: string) => HydrateProjectResult;
     exportLvglC: () => Promise<ExportLvglResult>;

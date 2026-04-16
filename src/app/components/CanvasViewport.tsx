@@ -58,6 +58,7 @@ export function CanvasViewport() {
     },
     actions: {
       addWidget,
+      deleteSelectedWidgets,
       selectWidget,
       clearSelection,
       beginInteraction,
@@ -593,7 +594,29 @@ export function CanvasViewport() {
 
   // 键盘事件 - 空格键
   useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+
+      return Boolean(target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']"));
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) {
+        return;
+      }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedWidgetIds.length === 0) {
+          return;
+        }
+
+        e.preventDefault();
+        deleteSelectedWidgets();
+        return;
+      }
+
       if (e.code === "Space" && !isSpacePressed) {
         e.preventDefault();
         setIsSpacePressed(true);
@@ -609,7 +632,7 @@ export function CanvasViewport() {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
+      if (e.code === "Space" && isSpacePressed) {
         e.preventDefault();
         setIsSpacePressed(false);
         setIsPanning(false);
@@ -626,10 +649,18 @@ export function CanvasViewport() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [isSpacePressed, cancelInteraction]);
+  }, [isSpacePressed, cancelInteraction, deleteSelectedWidgets, selectedWidgetIds]);
 
   // 鼠标事件
   const handleMouseDown = (e: React.MouseEvent) => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && activeElement !== e.target) {
+      const isEditable = Boolean(activeElement.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']"));
+      if (isEditable) {
+        activeElement.blur();
+      }
+    }
+
     if (isSpacePressed) {
       setIsPanning(true);
       lastMousePos.current = { x: e.clientX, y: e.clientY };
