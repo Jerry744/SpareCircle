@@ -405,6 +405,8 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
   const maybeTextColorTokenId = input.textColorTokenId;
   const maybeRadius = input.radius;
   const maybeAssetId = input.assetId;
+  const maybeOptions = input.options;
+  const maybeSelectedOptionIndex = input.selectedOptionIndex;
   const maybeValue = input.value;
   const maybeChecked = input.checked;
   const maybeVisible = input.visible;
@@ -431,6 +433,12 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
   }
   if (maybeAssetId !== undefined && !isValidAssetId(maybeAssetId)) {
     return { ok: false, error: `${path}.assetId must match asset id format when provided` };
+  }
+  if (maybeOptions !== undefined && (!Array.isArray(maybeOptions) || (maybeOptions as unknown[]).some((o) => typeof o !== "string"))) {
+    return { ok: false, error: `${path}.options must be a string array when provided` };
+  }
+  if (maybeSelectedOptionIndex !== undefined && (typeof maybeSelectedOptionIndex !== "number" || !Number.isFinite(maybeSelectedOptionIndex) || maybeSelectedOptionIndex < 0)) {
+    return { ok: false, error: `${path}.selectedOptionIndex must be a non-negative number when provided` };
   }
   if (maybeValue !== undefined && (typeof maybeValue !== "number" || !Number.isFinite(maybeValue) || maybeValue < 0 || maybeValue > 100)) {
     return { ok: false, error: `${path}.value must be a number between 0 and 100 when provided` };
@@ -469,6 +477,8 @@ function parseNormalizedWidget(input: unknown, path: string): { ok: true; widget
       textColorTokenId: maybeTextColorTokenId,
       radius: maybeRadius,
       assetId: maybeAssetId,
+      options: maybeOptions as string[] | undefined,
+      selectedOptionIndex: maybeSelectedOptionIndex as number | undefined,
       value: maybeValue as number | undefined,
       checked: maybeChecked as boolean | undefined,
       visible: maybeVisible,

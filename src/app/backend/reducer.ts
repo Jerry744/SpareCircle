@@ -155,6 +155,28 @@ function isScreenRootWidget(project: ProjectSnapshot, widgetId: string): boolean
   return project.screens.some((screen) => screen.rootNodeId === widgetId);
 }
 
+function getDeletableSelectedWidgetIds(project: ProjectSnapshot, selectedWidgetIds: string[]): string[] {
+  const activeScreen = getActiveScreen(project);
+  const selected = new Set(
+    selectedWidgetIds.filter((id) => id !== activeScreen.rootNodeId && Boolean(project.widgetsById[id])),
+  );
+
+  if (selected.size === 0) {
+    return [];
+  }
+
+  return Array.from(selected).filter((widgetId) => {
+    let parentId = project.widgetsById[widgetId]?.parentId ?? null;
+    while (parentId) {
+      if (selected.has(parentId)) {
+        return false;
+      }
+      parentId = project.widgetsById[parentId]?.parentId ?? null;
+    }
+    return true;
+  });
+}
+
 function isBindingValid(project: ProjectSnapshot, binding: EventBinding): boolean {
   if (binding.action.type === "switch_screen") {
     return project.screens.some((screen) => screen.id === binding.action.targetScreenId);
@@ -508,6 +530,23 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
       return commitProjectChange(state, nextProject, [widget.id]);
     }
+    case "deleteSelectedWidgets": {
+      if (state.interaction) {
+        return state;
+      }
+
+      const deletableIds = getDeletableSelectedWidgetIds(state.project, state.selectedWidgetIds);
+      if (deletableIds.length === 0) {
+        return state;
+      }
+
+      let nextProject = state.project;
+      for (const widgetId of deletableIds) {
+        nextProject = removeSubtree(nextProject, widgetId);
+      }
+
+      return commitProjectChange(state, pruneDanglingEventBindings(nextProject), []);
+    }
     case "moveWidget": {
       const widgetId = action.widgetId as string;
       const targetParentId = action.targetParentId as string;
@@ -772,6 +811,44 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         assetId: normalizedAssetId,
       }));
 
+      return commitProjectChange(state, nextProject, [widgetId]);
+    }
+    case "setWidgetOptions": {
+      const widgetId = action.widgetId as string;
+      const options = action.options as string[];
+      if (!widgetId || !Array.isArray(options)) {
+        return state;
+      }
+      const targetWidget = getWidgetById(state.project, widgetId);
+      if (!targetWidget) {
+        return state;
+      }
+      const nextProject = transformProjectWidgets(state.project, [widgetId], (widget: WidgetNode) => ({
+        ...widget,
+        options,
+      }));
+      if (JSON.stringify(nextProject) === JSON.stringify(state.project)) {
+        return state;
+      }
+      return commitProjectChange(state, nextProject, [widgetId]);
+    }
+    case "setWidgetSelectedOption": {
+      const widgetId = action.widgetId as string;
+      const index = Number(action.index);
+      if (!widgetId || !Number.isFinite(index) || index < 0) {
+        return state;
+      }
+      const targetWidget = getWidgetById(state.project, widgetId);
+      if (!targetWidget) {
+        return state;
+      }
+      const nextProject = transformProjectWidgets(state.project, [widgetId], (widget: WidgetNode) => ({
+        ...widget,
+        selectedOptionIndex: index,
+      }));
+      if (JSON.stringify(nextProject) === JSON.stringify(state.project)) {
+        return state;
+      }
       return commitProjectChange(state, nextProject, [widgetId]);
     }
     case "upsertWidgetEventBinding": {

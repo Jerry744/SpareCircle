@@ -58,6 +58,8 @@ export interface WidgetNode {
   textColorTokenId?: string;
   radius?: number;
   assetId?: string;
+  options?: string[];
+  selectedOptionIndex?: number;
   value?: number;
   checked?: boolean;
   visible?: boolean;
@@ -131,6 +133,7 @@ export interface EditorBackendValue {
     commitInteraction: () => void;
     cancelInteraction: () => void;
     addWidget: (parentId: string, widgetType: WidgetType, x: number, y: number) => void;
+    deleteSelectedWidgets: () => void;
     moveWidget: (widgetId: string, targetParentId: string, targetIndex: number) => void;
     updateWidgetProperty: (
       widgetId: string,
@@ -145,6 +148,8 @@ export interface EditorBackendValue {
     importAssets: (files: FileList | File[]) => Promise<{ ok: true; importedCount: number } | { ok: false; error: string }>;
     deleteAsset: (assetId: string) => void;
     assignWidgetAsset: (widgetId: string, assetId: string | null) => void;
+    setWidgetOptions: (widgetId: string, options: string[]) => void;
+    setWidgetSelectedOption: (widgetId: string, index: number) => void;
     upsertWidgetEventBinding: (widgetId: string, binding: EventBinding) => void;
     removeWidgetEventBinding: (widgetId: string, event: WidgetEventType) => void;
     updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) => void;
@@ -165,7 +170,7 @@ export const WIDGET_EDITABLE_PROPERTIES: Record<WidgetType, ReadonlySet<Editable
   Container: new Set(["x", "y", "width", "height", "fill", "visible"]),
   Panel: new Set(["x", "y", "width", "height", "fill", "visible"]),
   Label: new Set(["x", "y", "width", "height", "text", "textColor", "visible"]),
-  Button: new Set(["x", "y", "width", "height", "text", "fill", "textColor", "visible"]),
+  Button: new Set(["x", "y", "width", "height", "text", "fill", "textColor", "visible", "checked"]),
   Slider: new Set(["x", "y", "width", "height", "fill", "value", "visible"]),
   Switch: new Set(["x", "y", "width", "height", "fill", "checked", "visible"]),
   Checkbox: new Set(["x", "y", "width", "height", "text", "fill", "textColor", "checked", "visible"]),

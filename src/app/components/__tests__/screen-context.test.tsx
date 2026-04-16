@@ -49,10 +49,7 @@ describe("screen context isolation", () => {
     expect(screen.queryByText("Button1")).not.toBeInTheDocument();
   });
 
-  it.each([
-    ["add-checkbox", "Checkbox"],
-    ["add-radio", "Radio"],
-  ])("toggles the inspector initial state for %s widgets", (buttonId) => {
+  it("toggles the inspector initially-checked state for Checkbox widgets", () => {
     render(
       <EditorBackendProvider>
         <TestActions />
@@ -61,13 +58,29 @@ describe("screen context isolation", () => {
       </EditorBackendProvider>,
     );
 
-    fireEvent.click(screen.getByText(buttonId));
+    fireEvent.click(screen.getByText("add-checkbox"));
 
-    const checkedInput = screen.getByLabelText("Checked (ON)");
+    const checkedInput = screen.getByLabelText("Initially Checked");
     expect(checkedInput).not.toBeChecked();
 
     fireEvent.click(checkedInput);
 
-    expect(screen.getByLabelText("Checked (ON)")).toBeChecked();
+    expect(screen.getByLabelText("Initially Checked")).toBeChecked();
+  });
+
+  it("shows options table for Radio widgets in Content section", () => {
+    render(
+      <EditorBackendProvider>
+        <TestActions />
+        <HierarchyPanel />
+        <InspectorPanel />
+      </EditorBackendProvider>,
+    );
+
+    fireEvent.click(screen.getByText("add-radio"));
+
+    // Radio content section shows an options list
+    expect(screen.getByText("Options")).toBeInTheDocument();
+    expect(screen.getByText("+ Add")).toBeInTheDocument();
   });
 });

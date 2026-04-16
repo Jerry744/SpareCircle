@@ -147,7 +147,8 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
       y,
       width: baseSize.width,
       height: baseSize.height,
-      text: "Option",
+      options: ["Option 1", "Option 2"],
+      selectedOptionIndex: 0,
       fill: "#3b82f6",
       textColor: "#f3f4f6",
     };
@@ -164,7 +165,8 @@ export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetTyp
       y,
       width: baseSize.width,
       height: baseSize.height,
-      text: "Option 1\nOption 2\nOption 3",
+      options: ["Option 1", "Option 2", "Option 3"],
+      selectedOptionIndex: 0,
       fill: "#374151",
       textColor: "#f3f4f6",
     };

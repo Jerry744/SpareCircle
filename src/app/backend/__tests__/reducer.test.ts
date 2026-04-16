@@ -421,28 +421,64 @@ describe("editorReducer screen lifecycle", () => {
     expect(undone.project.widgetsById[id]).toBeUndefined();
   });
 
-  it("adds Radio with correct defaults and supports checked state", () => {
+  it("adds Radio with correct defaults and supports setWidgetOptions", () => {
     const state = createState();
     const next = editorReducer(state, { type: "addWidget", parentId: "Panel1", widgetType: "Radio", x: 10, y: 10 });
     const id = next.selectedWidgetIds[0];
     expect(next.project.widgetsById[id].type).toBe("Radio");
-    expect(next.project.widgetsById[id].text).toBe("Option");
+    expect(next.project.widgetsById[id].options).toEqual(["Option 1", "Option 2"]);
+    expect(next.project.widgetsById[id].selectedOptionIndex).toBe(0);
 
-    const checked = editorReducer(next, { type: "updateWidgetProperty", widgetId: id, propertyName: "checked", value: true });
-    expect(checked.project.widgetsById[id].checked).toBe(true);
+    const withOptions = editorReducer(next, { type: "setWidgetOptions", widgetId: id, options: ["A", "B", "C"] });
+    expect(withOptions.project.widgetsById[id].options).toEqual(["A", "B", "C"]);
+
+    const withSelected = editorReducer(withOptions, { type: "setWidgetSelectedOption", widgetId: id, index: 2 });
+    expect(withSelected.project.widgetsById[id].selectedOptionIndex).toBe(2);
   });
 
-  it("adds Dropdown with options string and supports text update", () => {
+  it("adds Dropdown with options array and supports setWidgetOptions", () => {
     const state = createState();
     const next = editorReducer(state, { type: "addWidget", parentId: "Panel1", widgetType: "Dropdown", x: 10, y: 10 });
     const id = next.selectedWidgetIds[0];
     expect(next.project.widgetsById[id].type).toBe("Dropdown");
-    expect(next.project.widgetsById[id].text).toBe("Option 1\nOption 2\nOption 3");
+    expect(next.project.widgetsById[id].options).toEqual(["Option 1", "Option 2", "Option 3"]);
     expect(next.project.widgetsById[id].width).toBe(160);
     expect(next.project.widgetsById[id].height).toBe(40);
 
-    const updated = editorReducer(next, { type: "updateWidgetProperty", widgetId: id, propertyName: "text", value: "A\nB\nC" });
-    expect(updated.project.widgetsById[id].text).toBe("A\nB\nC");
+    const updated = editorReducer(next, { type: "setWidgetOptions", widgetId: id, options: ["A", "B", "C"] });
+    expect(updated.project.widgetsById[id].options).toEqual(["A", "B", "C"]);
+  });
+
+  it("deletes currently selected widgets", () => {
+    const state = createState();
+    const selected = { ...state, selectedWidgetIds: ["Button1"] };
+
+    const next = editorReducer(selected, { type: "deleteSelectedWidgets" });
+
+    expect(next.project.widgetsById.Button1).toBeUndefined();
+    expect(next.project.widgetsById.Panel1.childrenIds).not.toContain("Button1");
+    expect(next.selectedWidgetIds).toEqual([]);
+  });
+
+  it("ignores deleting active screen root widget", () => {
+    const state = createState();
+    const selected = { ...state, selectedWidgetIds: [state.project.screens[0].rootNodeId] };
+
+    const next = editorReducer(selected, { type: "deleteSelectedWidgets" });
+
+    expect(next).toBe(selected);
+    expect(next.project.widgetsById[state.project.screens[0].rootNodeId]).toBeDefined();
+  });
+
+  it("deletes parent only once when parent and child are both selected", () => {
+    const state = createState();
+    const selected = { ...state, selectedWidgetIds: ["Container1", "Panel1"] };
+
+    const next = editorReducer(selected, { type: "deleteSelectedWidgets" });
+
+    expect(next.project.widgetsById.Container1).toBeUndefined();
+    expect(next.project.widgetsById.Panel1).toBeUndefined();
+    expect(next.project.widgetsById.Button1).toBeUndefined();
   });
 
   it("rejects invalid event binding targets and prunes deleted references", () => {

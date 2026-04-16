@@ -17,6 +17,8 @@ export interface LvglWidgetIR {
   textColorExpression?: string;
   assetSymbol?: string;
   assetMacro?: string;
+  options?: string[];
+  selectedOptionIndex?: number;
   value?: number;
   checked?: boolean;
   visible: boolean;
@@ -197,6 +199,10 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
               ? `lv_color_hex(0x${normalizeHexColor(child.textColor)!.slice(1)})`
               : undefined;
 
+          const radioText = child.type === "Radio" && child.options?.length
+            ? (child.options[child.selectedOptionIndex ?? 0] ?? child.options[0])
+            : undefined;
+
           widgets.push({
             id: child.id,
             cName: childName,
@@ -206,7 +212,9 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
             y: clampInt(child.y, 0),
             width: Math.max(1, clampInt(child.width, 80)),
             height: Math.max(1, clampInt(child.height, 40)),
-            text: child.text ?? "",
+            text: radioText ?? child.text ?? "",
+            options: child.options,
+            selectedOptionIndex: child.selectedOptionIndex,
             fillExpression,
             textColorExpression,
             assetSymbol: child.type === "Image" && child.assetId ? assetById.get(child.assetId)?.symbolName : undefined,

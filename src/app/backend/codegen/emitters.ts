@@ -55,11 +55,19 @@ export function emitButton(widget: LvglWidgetIR): string {
   const lines = [
     `  ${widget.cName} = lv_button_create(${widget.parentCName});`,
     "  lv_obj_clear_flag(" + widget.cName + ", LV_OBJ_FLAG_SCROLLABLE);",
-    ...emitCommonWidgetSetup(widget),
-    `  lv_obj_t *${labelName} = lv_label_create(${widget.cName});`,
-    `  lv_label_set_text(${labelName}, \"${escapeCString(widget.text || "Button")}\");`,
-    `  lv_obj_center(${labelName});`,
   ];
+
+  if (widget.checked !== undefined) {
+    lines.push(`  lv_obj_add_flag(${widget.cName}, LV_OBJ_FLAG_CHECKABLE);`);
+    if (widget.checked === true) {
+      lines.push(`  lv_obj_add_state(${widget.cName}, LV_STATE_CHECKED);`);
+    }
+  }
+
+  lines.push(...emitCommonWidgetSetup(widget));
+  lines.push(`  lv_obj_t *${labelName} = lv_label_create(${widget.cName});`);
+  lines.push(`  lv_label_set_text(${labelName}, \"${escapeCString(widget.text || "Button")}\");`);
+  lines.push(`  lv_obj_center(${labelName});`);
 
   if (widget.textColorExpression) {
     lines.push(`  lv_obj_set_style_text_color(${labelName}, ${widget.textColorExpression}, LV_PART_MAIN);`);
@@ -167,12 +175,19 @@ export function emitRadio(widget: LvglWidgetIR): string {
 }
 
 export function emitDropdown(widget: LvglWidgetIR): string {
+  const optionsText = widget.options?.length
+    ? widget.options.join("\\n")
+    : (widget.text || "Option 1\\nOption 2\\nOption 3");
   const lines = [
     `  ${widget.cName} = lv_dropdown_create(${widget.parentCName});`,
-    `  lv_dropdown_set_options(${widget.cName}, "${escapeCString(widget.text || "Option 1\\nOption 2\\nOption 3")}");`,
+    `  lv_dropdown_set_options(${widget.cName}, "${escapeCString(optionsText)}");`,
     `  lv_obj_set_pos(${widget.cName}, ${widget.x}, ${widget.y});`,
     `  lv_obj_set_size(${widget.cName}, ${widget.width}, ${widget.height});`,
   ];
+
+  if (widget.selectedOptionIndex !== undefined && widget.selectedOptionIndex > 0) {
+    lines.push(`  lv_dropdown_set_selected(${widget.cName}, ${widget.selectedOptionIndex});`);
+  }
 
   if (widget.fillExpression) {
     lines.push(`  lv_obj_set_style_bg_color(${widget.cName}, ${widget.fillExpression}, LV_PART_MAIN);`);

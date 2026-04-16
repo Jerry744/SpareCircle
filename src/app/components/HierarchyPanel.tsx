@@ -53,7 +53,7 @@ export function HierarchyPanel() {
       project,
       selectedWidgetIds,
     },
-    actions: { selectWidget, moveWidget },
+    actions: { selectWidget, moveWidget, deleteSelectedWidgets, updateWidgetProperty },
   } = useEditorBackend();
   const activeScreen = getActiveScreenFromProject(project);
   const rootTree = buildWidgetTree(project, activeScreen.rootNodeId);
@@ -114,8 +114,21 @@ export function HierarchyPanel() {
           className={`relative flex items-center gap-1 px-2 py-1 rounded cursor-pointer transition-colors border border-transparent ${
             isSelected ? "bg-[#3c4a5d] text-white" : "hover:bg-[#3c3c3c] text-gray-300"
           }`}
+          tabIndex={0}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={(event) => selectWidget(widget.id, event.metaKey || event.ctrlKey || event.shiftKey)}
+          onKeyDown={(event) => {
+            if (event.key !== "Delete" && event.key !== "Backspace") {
+              return;
+            }
+
+            if (!selectedWidgetIds.includes(widget.id)) {
+              return;
+            }
+
+            event.preventDefault();
+            deleteSelectedWidgets();
+          }}
           draggable={widget.type !== "Screen"}
           onDragStart={(event) => {
             event.dataTransfer.effectAllowed = "move";
@@ -173,9 +186,20 @@ export function HierarchyPanel() {
           )}
           <span className="text-xs flex-1">{widget.name}</span>
           <span className="text-[10px] text-gray-500">{widget.type}</span>
-          <button className="p-0.5 hover:bg-[#4c4c4c] rounded opacity-0 group-hover:opacity-100 text-gray-400">
-            {widget.visible === false ? <EyeOff size={12} /> : <Eye size={12} />}
-          </button>
+          {widget.type !== "Screen" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                updateWidgetProperty(widget.id, "visible", widget.visible !== false ? false : true);
+              }}
+              className={`p-0.5 hover:bg-[#4c4c4c] rounded transition-colors ${
+                widget.visible === false ? "text-gray-600" : "text-gray-400 opacity-0 group-hover:opacity-100"
+              }`}
+              title={widget.visible === false ? "Show widget" : "Hide widget"}
+            >
+              {widget.visible === false ? <EyeOff size={12} /> : <Eye size={12} />}
+            </button>
+          )}
           {dropInside && <div className="absolute inset-0 border border-[#5b9dd9] rounded pointer-events-none" />}
           {dropAfter && <div className="absolute left-1 right-1 h-0.5 bg-[#5b9dd9] translate-y-2" />}
           {isDragging && <div className="absolute inset-0 bg-[#5b9dd9]/10 rounded pointer-events-none" />}

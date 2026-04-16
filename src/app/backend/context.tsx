@@ -145,6 +145,7 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
       cancelInteraction: () => dispatch({ type: "cancelInteraction" }),
       addWidget: (parentId: string, widgetType: WidgetType, x: number, y: number) =>
         dispatch({ type: "addWidget", parentId, widgetType, x, y }),
+      deleteSelectedWidgets: () => dispatch({ type: "deleteSelectedWidgets" }),
       moveWidget: (widgetId: string, targetParentId: string, targetIndex: number) =>
         dispatch({ type: "moveWidget", widgetId, targetParentId, targetIndex }),
       updateWidgetProperty: (widgetId: string, propertyName: EditableWidgetProperty, value: EditableWidgetPropertyValue) =>
@@ -180,6 +181,10 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
       },
       deleteAsset: (assetId: string) => dispatch({ type: "deleteAsset", assetId }),
       assignWidgetAsset: (widgetId: string, assetId: string | null) => dispatch({ type: "assignWidgetAsset", widgetId, assetId }),
+      setWidgetOptions: (widgetId: string, options: string[]) =>
+        dispatch({ type: "setWidgetOptions", widgetId, options }),
+      setWidgetSelectedOption: (widgetId: string, index: number) =>
+        dispatch({ type: "setWidgetSelectedOption", widgetId, index }),
       upsertWidgetEventBinding: (widgetId: string, binding: EventBinding) =>
         dispatch({ type: "upsertWidgetEventBinding", widgetId, binding }),
       removeWidgetEventBinding: (widgetId: string, event: WidgetEventType) =>

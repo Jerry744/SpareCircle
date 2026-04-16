@@ -25,7 +25,6 @@ import {
 
 type InspectorFieldType = "number" | "text" | "color" | "boolean";
 
-
 interface InspectorField {
   key: EditableWidgetProperty;
   label: string;
@@ -52,47 +51,42 @@ const FIELD_CONFIG: Record<EditableWidgetProperty, InspectorField> = {
   textColor: { key: "textColor", label: "Text Color", type: "color", section: "style" },
   visible: { key: "visible", label: "Visible", type: "boolean", section: "flags" },
   value: { key: "value", label: "Value", type: "number", section: "state", unit: "%", min: 0, max: 100 },
-  checked: { key: "checked", label: "Checked (ON)", type: "boolean", section: "state" },
+  checked: { key: "checked", label: "Checked", type: "boolean", section: "state" },
 };
 
+// Position + style fields only; content/state/flags handled per-widget below
 const WIDGET_FIELD_SCHEMA: Record<WidgetNode["type"], EditableWidgetProperty[]> = {
-  Screen: ["width", "height", "fill", "visible"],
-  Container: ["x", "y", "width", "height", "fill", "visible"],
-  Panel: ["x", "y", "width", "height", "fill", "visible"],
-  Label: ["x", "y", "width", "height", "text", "textColor", "visible"],
-  Button: ["x", "y", "width", "height", "text", "fill", "textColor", "visible"],
-  Slider: ["x", "y", "width", "height", "fill", "value", "visible"],
-  Switch: ["x", "y", "width", "height", "fill", "checked", "visible"],
-  Checkbox: ["x", "y", "width", "height", "text", "fill", "textColor", "checked", "visible"],
-  Radio: ["x", "y", "width", "height", "text", "fill", "textColor", "checked", "visible"],
-  Dropdown: ["x", "y", "width", "height", "text", "fill", "textColor", "visible"],
-  Image: ["x", "y", "width", "height", "fill", "visible"],
+  Screen:    ["width", "height", "fill"],
+  Container: ["x", "y", "width", "height", "fill"],
+  Panel:     ["x", "y", "width", "height", "fill"],
+  Label:     ["x", "y", "width", "height", "text", "textColor"],
+  Button:    ["x", "y", "width", "height", "fill", "textColor", "checked"],
+  Slider:    ["x", "y", "width", "height", "fill", "value"],
+  Switch:    ["x", "y", "width", "height", "fill", "checked"],
+  Checkbox:  ["x", "y", "width", "height", "text", "fill", "textColor", "checked"],
+  Radio:     ["x", "y", "width", "height", "fill", "textColor"],
+  Dropdown:  ["x", "y", "width", "height", "fill", "textColor"],
+  Image:     ["x", "y", "width", "height", "fill"],
 };
+
+// Widgets that show a "Content" setup section
+const WIDGET_HAS_CONTENT = new Set<WidgetNode["type"]>(["Label", "Button", "Checkbox", "Radio", "Dropdown"]);
+// Widgets that show a generic "Initial State" section
+const WIDGET_HAS_INITIAL_STATE = new Set<WidgetNode["type"]>(["Slider", "Switch"]);
 
 function getWidgetPropertyDraftValue(project: ProjectSnapshot, widget: WidgetNode, key: EditableWidgetProperty): string | boolean {
   switch (key) {
-    case "x":
-      return String(widget.x);
-    case "y":
-      return String(widget.y);
-    case "width":
-      return String(widget.width);
-    case "height":
-      return String(widget.height);
-    case "text":
-      return widget.text ?? "";
-    case "fill":
-      return resolveWidgetColor(project, widget, "fill");
-    case "textColor":
-      return resolveWidgetColor(project, widget, "textColor");
-    case "visible":
-      return widget.visible ?? true;
-    case "value":
-      return String(widget.value ?? 0);
-    case "checked":
-      return widget.checked ?? false;
-    default:
-      return "";
+    case "x":        return String(widget.x);
+    case "y":        return String(widget.y);
+    case "width":    return String(widget.width);
+    case "height":   return String(widget.height);
+    case "text":     return widget.text ?? "";
+    case "fill":     return resolveWidgetColor(project, widget, "fill");
+    case "textColor": return resolveWidgetColor(project, widget, "textColor");
+    case "visible":  return widget.visible ?? true;
+    case "value":    return String(widget.value ?? 0);
+    case "checked":  return widget.checked ?? false;
+    default:         return "";
   }
 }
 
@@ -121,12 +115,10 @@ function validateField(
     if (typeof draft !== "string" || !draft.trim()) {
       return { ok: false, error: `${field.label} is required` };
     }
-
     const parsed = Number(draft);
     if (!Number.isFinite(parsed)) {
       return { ok: false, error: `${field.label} must be a valid number` };
     }
-
     const rounded = Math.round(parsed);
     if (field.min !== undefined && rounded < field.min) {
       return { ok: false, error: `${field.label} must be >= ${field.min}` };
@@ -134,7 +126,6 @@ function validateField(
     if (field.max !== undefined && rounded > field.max) {
       return { ok: false, error: `${field.label} must be <= ${field.max}` };
     }
-
     return { ok: true, normalized: rounded, display: String(rounded) };
   }
 
@@ -142,12 +133,10 @@ function validateField(
     if (typeof draft !== "string") {
       return { ok: false, error: `${field.label} must be a string` };
     }
-
     const normalizedColor = draft.trim();
     if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(normalizedColor)) {
       return { ok: false, error: `${field.label} must be a hex color like #1f2937` };
     }
-
     return { ok: true, normalized: normalizedColor, display: normalizedColor };
   }
 
@@ -168,48 +157,53 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
     position: true,
     style: true,
     asset: true,
-    text: true,
+    content: true,
     state: true,
-    flags: true,
   });
   const [drafts, setDrafts] = useState<DraftMap>({});
   const [errors, setErrors] = useState<ErrorMap>({});
 
   const {
-    state: {
-      project,
-      selectedWidgetIds,
+    state: { project, selectedWidgetIds },
+    actions: {
+      updateWidgetProperty,
+      assignWidgetStyleToken,
+      clearWidgetProperty,
+      assignWidgetAsset,
+      deleteAsset,
+      setWidgetOptions,
+      setWidgetSelectedOption,
     },
-    actions: { updateWidgetProperty, assignWidgetStyleToken, clearWidgetProperty, assignWidgetAsset, deleteAsset },
   } = useEditorBackend();
 
   const activeScreen = getActiveScreenFromProject(project);
-  const activeScreenNodeIds = useMemo(() => collectSubtreeIds(project, activeScreen.rootNodeId), [project, activeScreen.rootNodeId]);
-  const selectedWidget = selectedWidgetIds.length === 1 && selectedWidgetIds[0] && activeScreenNodeIds.has(selectedWidgetIds[0])
-    ? getWidgetById(project, selectedWidgetIds[0])
-    : null;
+  const activeScreenNodeIds = useMemo(
+    () => collectSubtreeIds(project, activeScreen.rootNodeId),
+    [project, activeScreen.rootNodeId],
+  );
+  const selectedWidget =
+    selectedWidgetIds.length === 1 &&
+    selectedWidgetIds[0] &&
+    activeScreenNodeIds.has(selectedWidgetIds[0])
+      ? getWidgetById(project, selectedWidgetIds[0])
+      : null;
 
   const activeFields = useMemo(() => {
-    if (!selectedWidget) {
-      return [] as InspectorField[];
-    }
-
-    return WIDGET_FIELD_SCHEMA[selectedWidget.type].map((fieldKey) => FIELD_CONFIG[fieldKey]);
+    if (!selectedWidget) return [] as InspectorField[];
+    return WIDGET_FIELD_SCHEMA[selectedWidget.type].map((k) => FIELD_CONFIG[k]);
   }, [selectedWidget]);
 
   const sectionFields = useMemo(
     () => ({
-      position: activeFields.filter((field) => field.section === "position"),
-      style: activeFields.filter((field) => field.section === "style"),
-      text: activeFields.filter((field) => field.section === "text"),
-      state: activeFields.filter((field) => field.section === "state"),
-      flags: activeFields.filter((field) => field.section === "flags"),
+      position: activeFields.filter((f) => f.section === "position"),
+      style: activeFields.filter((f) => f.section === "style"),
+      state: activeFields.filter((f) => f.section === "state"),
     }),
     [activeFields],
   );
 
   const assetOptions = useMemo(
-    () => Object.values(project.assets).sort((left, right) => left.name.localeCompare(right.name)),
+    () => Object.values(project.assets).sort((a, b) => a.name.localeCompare(b.name)),
     [project.assets],
   );
 
@@ -219,7 +213,6 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
       setErrors({});
       return;
     }
-
     setDrafts(buildDrafts(project, selectedWidget, activeFields));
     setErrors({});
   }, [project, selectedWidget, activeFields]);
@@ -236,16 +229,12 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
   };
 
   const resetField = (field: InspectorField) => {
-    if (!selectedWidget) {
-      return;
-    }
-
+    if (!selectedWidget) return;
     if (field.key === "fill" || field.key === "textColor") {
       clearWidgetProperty(selectedWidget.id, field.key);
       setErrors((prev) => ({ ...prev, [field.key]: undefined }));
       return;
     }
-
     setDrafts((prev) => ({
       ...prev,
       [field.key]: getWidgetPropertyDraftValue(project, selectedWidget, field.key),
@@ -254,24 +243,16 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
   };
 
   const commitField = (field: InspectorField, draftOverride?: string | boolean) => {
-    if (!selectedWidget) {
-      return;
-    }
-
+    if (!selectedWidget) return;
     const draftValue = draftOverride ?? drafts[field.key];
-    if (draftValue === undefined) {
-      return;
-    }
-
+    if (draftValue === undefined) return;
     const result = validateField(selectedWidget, field, draftValue);
     if (!result.ok) {
       setErrors((prev) => ({ ...prev, [field.key]: result.error }));
       return;
     }
-
     setDrafts((prev) => ({ ...prev, [field.key]: result.display }));
     setErrors((prev) => ({ ...prev, [field.key]: undefined }));
-
     const currentValue = getWidgetPropertyDraftValue(project, selectedWidget, field.key);
     if (currentValue !== result.display) {
       updateWidgetProperty(selectedWidget.id, field.key, result.normalized);
@@ -285,7 +266,6 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
       event.currentTarget.blur();
       return;
     }
-
     if (event.key === "Escape") {
       event.preventDefault();
       resetField(field);
@@ -296,9 +276,7 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
   if (selectedWidgetIds.length === 0) {
     return (
       <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex items-center justify-center">
-        <div className="text-sm text-gray-500 text-center px-4">
-          Select a widget to view properties
-        </div>
+        <div className="text-sm text-gray-500 text-center px-4">Select a widget to view properties</div>
       </div>
     );
   }
@@ -308,7 +286,6 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
       <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex items-center justify-center">
         <div className="text-sm text-gray-400 text-center px-4 space-y-2">
           <div>{selectedWidgetIds.length} widgets selected</div>
-          <div className="text-xs text-gray-500">Inspector editing for multi-select will be added later.</div>
           <div className="text-xs text-gray-500">Select a single widget to edit properties.</div>
         </div>
       </div>
@@ -318,14 +295,10 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
   if (!selectedWidget) {
     return (
       <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex items-center justify-center">
-        <div className="text-sm text-gray-500 text-center px-4">
-          Selected widget was not found in current screen
-        </div>
+        <div className="text-sm text-gray-500 text-center px-4">Selected widget not found in current screen</div>
       </div>
     );
   }
-
-  const selectionLabel = selectedWidget.name;
 
   return (
     <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex flex-col">
@@ -338,11 +311,11 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
         {/* Widget Info */}
         <div className="p-3 border-b border-[#1e1e1e]">
           <div className="text-xs text-gray-500 mb-1">SELECTED WIDGET</div>
-          <div className="font-semibold text-gray-100">{selectionLabel}</div>
+          <div className="font-semibold text-gray-100">{selectedWidget.name}</div>
           <div className="text-xs text-gray-400 mt-1">{selectedWidget.type}</div>
         </div>
 
-        {/* Position & Size Section */}
+        {/* Position & Size */}
         <PropertySection
           title="Position & Size"
           expanded={expandedSections.position}
@@ -355,14 +328,14 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
               value={String(drafts[field.key] ?? "")}
               unit={field.unit}
               error={errors[field.key]}
-              onChange={(nextValue) => setDraft(field, nextValue)}
-              onBlur={() => commitField(field)}
-              onKeyDown={(event) => handleInputKeyDown(event, field)}
+              onChange={(v) => setDraft(field, v)}
+              onBlur={(e) => commitField(field, e.currentTarget.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, field)}
             />
           ))}
         </PropertySection>
 
-        {/* Style Section */}
+        {/* Style */}
         <PropertySection
           title="Style"
           expanded={expandedSections.style}
@@ -376,16 +349,21 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
               tokenId={getWidgetStyleTokenId(selectedWidget, field.key as ColorPropertyKey) ?? null}
               tokenOptions={project.styleTokens}
               error={errors[field.key]}
-              onChange={(nextValue) => setDraft(field, nextValue)}
-              onBlur={() => commitField(field)}
-              onTokenChange={(tokenId) => assignWidgetStyleToken(selectedWidget.id, field.key as ColorPropertyKey, tokenId)}
-              onClearOverride={() => clearWidgetProperty(selectedWidget.id, field.key as ColorPropertyKey)}
-              onKeyDown={(event) => handleInputKeyDown(event, field)}
+              onChange={(v) => setDraft(field, v)}
+              onBlur={(e) => commitField(field, e.currentTarget.value)}
+              onTokenChange={(tokenId) =>
+                assignWidgetStyleToken(selectedWidget.id, field.key as ColorPropertyKey, tokenId)
+              }
+              onClearOverride={() =>
+                clearWidgetProperty(selectedWidget.id, field.key as ColorPropertyKey)
+              }
+              onKeyDown={(e) => handleInputKeyDown(e, field)}
             />
           ))}
         </PropertySection>
 
-        {selectedWidget.type === "Image" ? (
+        {/* Asset (Image only) */}
+        {selectedWidget.type === "Image" && (
           <PropertySection
             title="Asset"
             expanded={expandedSections.asset}
@@ -398,10 +376,30 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
               onDelete={(assetId) => deleteAsset(assetId)}
             />
           </PropertySection>
-        ) : null}
+        )}
 
-        {/* Initial State Section (Slider value, Switch checked) */}
-        {sectionFields.state.length > 0 ? (
+        {/* Content (widget-specific setup) */}
+        {WIDGET_HAS_CONTENT.has(selectedWidget.type) && (
+          <PropertySection
+            title="Content"
+            expanded={expandedSections.content}
+            onToggle={() => toggleSection("content")}
+          >
+            <WidgetContentSetup
+              widget={selectedWidget}
+              drafts={drafts}
+              errors={errors}
+              onSetDraft={setDraft}
+              onCommitField={commitField}
+              onInputKeyDown={handleInputKeyDown}
+              onSetOptions={(opts) => setWidgetOptions(selectedWidget.id, opts)}
+              onSetSelectedOption={(idx) => setWidgetSelectedOption(selectedWidget.id, idx)}
+            />
+          </PropertySection>
+        )}
+
+        {/* Initial State (Slider: value, Switch: checked) */}
+        {WIDGET_HAS_INITIAL_STATE.has(selectedWidget.type) && sectionFields.state.length > 0 && (
           <PropertySection
             title="Initial State"
             expanded={expandedSections.state}
@@ -414,7 +412,7 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
                   label={field.label}
                   checked={Boolean(drafts[field.key])}
                   error={errors[field.key]}
-                  onCheckedChange={(checked) => commitField(field, checked)}
+                  onCheckedChange={(v) => commitField(field, v)}
                 />
               ) : (
                 <PropertyRow
@@ -423,58 +421,263 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
                   value={String(drafts[field.key] ?? "")}
                   unit={field.unit}
                   error={errors[field.key]}
-                  onChange={(nextValue) => setDraft(field, nextValue)}
-                  onBlur={() => commitField(field)}
-                  onKeyDown={(event) => handleInputKeyDown(event, field)}
+                  onChange={(v) => setDraft(field, v)}
+                  onBlur={(e) => commitField(field, e.currentTarget.value)}
+                  onKeyDown={(e) => handleInputKeyDown(e, field)}
                 />
               ),
             )}
           </PropertySection>
-        ) : null}
-
-        {/* Text Section */}
-        <PropertySection
-          title="Text"
-          expanded={expandedSections.text}
-          onToggle={() => toggleSection("text")}
-        >
-          {sectionFields.text.length === 0 ? (
-            <div className="text-xs text-gray-500">No text properties for this widget.</div>
-          ) : (
-            sectionFields.text.map((field) => (
-              <TextProperty
-                key={field.key}
-                label={field.label}
-                value={String(drafts[field.key] ?? "")}
-                error={errors[field.key]}
-                onChange={(nextValue) => setDraft(field, nextValue)}
-                onBlur={() => commitField(field)}
-                onKeyDown={(event) => handleInputKeyDown(event, field)}
-              />
-            ))
-          )}
-        </PropertySection>
-
-        {/* Flags Section */}
-        <PropertySection
-          title="Flags & States"
-          expanded={expandedSections.flags}
-          onToggle={() => toggleSection("flags")}
-        >
-          {sectionFields.flags.map((field) => (
-            <CheckboxProperty
-              key={field.key}
-              label={field.label}
-              checked={Boolean(drafts[field.key])}
-              error={errors[field.key]}
-              onCheckedChange={(checked) => commitField(field, checked)}
-            />
-          ))}
-        </PropertySection>
+        )}
       </div>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Widget-specific content section
+// ---------------------------------------------------------------------------
+
+function WidgetContentSetup({
+  widget,
+  drafts,
+  errors,
+  onSetDraft,
+  onCommitField,
+  onInputKeyDown,
+  onSetOptions,
+  onSetSelectedOption,
+}: {
+  widget: WidgetNode;
+  drafts: DraftMap;
+  errors: ErrorMap;
+  onSetDraft: (field: InspectorField, value: string | boolean) => void;
+  onCommitField: (field: InspectorField, value?: string | boolean) => void;
+  onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, field: InspectorField) => void;
+  onSetOptions: (opts: string[]) => void;
+  onSetSelectedOption: (idx: number) => void;
+}) {
+  switch (widget.type) {
+    case "Label":
+      return (
+        <TextProperty
+          label="Text"
+          value={String(drafts.text ?? "")}
+          error={errors.text}
+          onChange={(v) => onSetDraft(FIELD_CONFIG.text, v)}
+          onBlur={(e) => onCommitField(FIELD_CONFIG.text, e.currentTarget.value)}
+          onKeyDown={(e) => onInputKeyDown(e, FIELD_CONFIG.text)}
+        />
+      );
+
+    case "Button":
+      return (
+        <div className="space-y-1">
+          <div className="text-xs text-gray-500 mb-2">
+            设置按钮初始激活状态 (Initial active state)
+          </div>
+          <CheckboxProperty
+            label="Initially Active (Checked)"
+            checked={Boolean(drafts.checked)}
+            error={errors.checked}
+            onCheckedChange={(v) => onCommitField(FIELD_CONFIG.checked, v)}
+          />
+        </div>
+      );
+
+    case "Checkbox":
+      return (
+        <div className="space-y-3">
+          <TextProperty
+            label="Label"
+            value={String(drafts.text ?? "")}
+            error={errors.text}
+            onChange={(v) => onSetDraft(FIELD_CONFIG.text, v)}
+            onBlur={(e) => onCommitField(FIELD_CONFIG.text, e.currentTarget.value)}
+            onKeyDown={(e) => onInputKeyDown(e, FIELD_CONFIG.text)}
+          />
+          <CheckboxProperty
+            label="Initially Checked"
+            checked={Boolean(drafts.checked)}
+            error={errors.checked}
+            onCheckedChange={(v) => onCommitField(FIELD_CONFIG.checked, v)}
+          />
+        </div>
+      );
+
+    case "Radio": {
+      const effectiveOptions = widget.options ?? (widget.text ? [widget.text] : ["Option 1"]);
+      const selectedIndex = widget.selectedOptionIndex ?? 0;
+      return (
+        <WidgetOptionsProperty
+          widgetId={widget.id}
+          widgetType="Radio"
+          options={effectiveOptions}
+          selectedOptionIndex={selectedIndex}
+          onOptionsChange={onSetOptions}
+          onSelectedOptionChange={onSetSelectedOption}
+        />
+      );
+    }
+
+    case "Dropdown": {
+      const effectiveOptions =
+        widget.options ??
+        (widget.text ? widget.text.split("\n") : ["Option 1", "Option 2", "Option 3"]);
+      const selectedIndex = widget.selectedOptionIndex ?? 0;
+      return (
+        <WidgetOptionsProperty
+          widgetId={widget.id}
+          widgetType="Dropdown"
+          options={effectiveOptions}
+          selectedOptionIndex={selectedIndex}
+          onOptionsChange={onSetOptions}
+          onSelectedOptionChange={onSetSelectedOption}
+        />
+      );
+    }
+
+    default:
+      return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WidgetOptionsProperty — options table for Radio / Dropdown
+// ---------------------------------------------------------------------------
+
+function WidgetOptionsProperty({
+  widgetId,
+  widgetType,
+  options,
+  selectedOptionIndex,
+  onOptionsChange,
+  onSelectedOptionChange,
+}: {
+  widgetId: string;
+  widgetType: "Radio" | "Dropdown";
+  options: string[];
+  selectedOptionIndex: number;
+  onOptionsChange: (opts: string[]) => void;
+  onSelectedOptionChange: (idx: number) => void;
+}) {
+  const [localOptions, setLocalOptions] = useState<string[]>(options);
+
+  useEffect(() => {
+    setLocalOptions(options);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widgetId]);
+
+  const commitOptions = (opts: string[]) => {
+    onOptionsChange(opts);
+  };
+
+  const addOption = () => {
+    const next = [...localOptions, `Option ${localOptions.length + 1}`];
+    setLocalOptions(next);
+    onOptionsChange(next);
+  };
+
+  const removeOption = (index: number) => {
+    const next = localOptions.filter((_, i) => i !== index);
+    setLocalOptions(next);
+    onOptionsChange(next);
+    if (selectedOptionIndex >= next.length) {
+      onSelectedOptionChange(Math.max(0, next.length - 1));
+    }
+  };
+
+  const updateLocal = (index: number, value: string) => {
+    const next = [...localOptions];
+    next[index] = value;
+    setLocalOptions(next);
+  };
+
+  const safeSelected = Math.min(selectedOptionIndex, Math.max(0, localOptions.length - 1));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-400">Options</span>
+        <button
+          type="button"
+          onClick={addOption}
+          className="text-xs text-[#5b9dd9] hover:text-blue-300 transition-colors"
+        >
+          + Add
+        </button>
+      </div>
+
+      {localOptions.length === 0 && (
+        <div className="text-xs text-gray-500 py-1">No options. Click + Add.</div>
+      )}
+
+      {localOptions.map((option, index) => (
+        <div key={index} className="flex items-center gap-1">
+          {widgetType === "Radio" && (
+            <input
+              type="radio"
+              name={`radio-init-${widgetId}`}
+              checked={safeSelected === index}
+              onChange={() => onSelectedOptionChange(index)}
+              className="accent-[#5b9dd9] flex-shrink-0"
+              title="Set as initial selection"
+            />
+          )}
+          <input
+            type="text"
+            value={option}
+            onChange={(e) => updateLocal(index, e.target.value)}
+            onBlur={() => commitOptions(localOptions)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitOptions(localOptions);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            className="flex-1 px-2 py-1 bg-[#252525] border border-[#3c3c3c] rounded text-xs focus:border-[#5b9dd9] outline-none text-gray-200 min-w-0"
+          />
+          <button
+            type="button"
+            onClick={() => removeOption(index)}
+            className="p-1 text-gray-500 hover:text-rose-400 flex-shrink-0 transition-colors"
+            title="Remove option"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      ))}
+
+      {widgetType === "Dropdown" && localOptions.length > 0 && (
+        <div className="space-y-1 pt-1 border-t border-[#3c3c3c]">
+          <span className="text-xs text-gray-400">Initial Selection</span>
+          <select
+            value={safeSelected}
+            onChange={(e) => onSelectedOptionChange(Number(e.target.value))}
+            className="w-full px-2 py-1 bg-[#252525] border border-[#3c3c3c] rounded text-xs text-gray-200 outline-none focus:border-[#5b9dd9]"
+          >
+            {localOptions.map((opt, i) => (
+              <option key={i} value={i}>
+                {opt.trim() || `Option ${i + 1}`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {widgetType === "Radio" && localOptions.length > 0 && (
+        <div className="text-[11px] text-gray-500 pt-1">
+          点击单选框选择初始选中项 (Click radio to set initial selection)
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared sub-components
+// ---------------------------------------------------------------------------
 
 function AssetProperty({
   selectedAssetId,
@@ -487,13 +690,18 @@ function AssetProperty({
   onChange: (assetId: string | null) => void;
   onDelete: (assetId: string) => void;
 }) {
-  const selectedAsset = selectedAssetId ? options.find((item) => item.id === selectedAssetId) ?? null : null;
+  const selectedAsset = selectedAssetId
+    ? (options.find((item) => item.id === selectedAssetId) ?? null)
+    : null;
 
   return (
     <div className="space-y-2">
       <div className="text-xs text-gray-400">Source</div>
       <div className="flex items-center gap-2">
-        <Select value={selectedAssetId ?? "__none__"} onValueChange={(nextValue) => onChange(nextValue === "__none__" ? null : nextValue)}>
+        <Select
+          value={selectedAssetId ?? "__none__"}
+          onValueChange={(v) => onChange(v === "__none__" ? null : v)}
+        >
           <SelectTrigger className="h-8 w-full bg-[#252525] border-[#3c3c3c] text-[11px] text-gray-300">
             <SelectValue placeholder="No asset selected">
               {selectedAsset ? selectedAsset.name : "No asset selected"}
@@ -512,18 +720,16 @@ function AssetProperty({
           size="sm"
           className="h-8 px-2"
           disabled={!selectedAsset}
-          onClick={() => {
-            if (selectedAsset) {
-              onDelete(selectedAsset.id);
-            }
-          }}
+          onClick={() => { if (selectedAsset) onDelete(selectedAsset.id); }}
           title="Delete selected asset from project"
         >
           <Trash2 size={12} />
         </Button>
       </div>
       {selectedAsset ? <div className="text-[11px] text-gray-500">{selectedAsset.mimeType}</div> : null}
-      {options.length === 0 ? <div className="text-[11px] text-gray-500">Import images from toolbar first.</div> : null}
+      {options.length === 0 ? (
+        <div className="text-[11px] text-gray-500">Import images from toolbar first.</div>
+      ) : null}
     </div>
   );
 }
@@ -567,7 +773,7 @@ function PropertyRow({
   unit?: string;
   error?: string;
   onChange: (value: string) => void;
-  onBlur: () => void;
+  onBlur: (event: React.FocusEvent<HTMLInputElement>) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 }) {
   return (
@@ -578,7 +784,7 @@ function PropertyRow({
           <input
             type="text"
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
             onKeyDown={onKeyDown}
             className="w-20 px-2 py-1 bg-[#252525] border border-[#3c3c3c] rounded text-xs focus:border-[#5b9dd9] outline-none text-gray-200"
@@ -609,12 +815,14 @@ function ColorProperty({
   tokenOptions: ProjectSnapshot["styleTokens"];
   error?: string;
   onChange: (value: string) => void;
-  onBlur: () => void;
+  onBlur: (event: React.FocusEvent<HTMLInputElement>) => void;
   onTokenChange: (tokenId: string | null) => void;
   onClearOverride: () => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 }) {
-  const resolvedToken = tokenId ? tokenOptions.find((token) => token.id === tokenId) ?? null : null;
+  const resolvedToken = tokenId
+    ? (tokenOptions.find((t) => t.id === tokenId) ?? null)
+    : null;
 
   return (
     <div className="space-y-2">
@@ -624,14 +832,14 @@ function ColorProperty({
           <input
             type="color"
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
             className="w-8 h-6 bg-[#252525] border border-[#3c3c3c] rounded cursor-pointer"
           />
           <input
             type="text"
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
             onKeyDown={onKeyDown}
             className="w-24 px-2 py-1 bg-[#252525] border border-[#3c3c3c] rounded text-xs focus:border-[#5b9dd9] outline-none text-gray-200"
@@ -639,12 +847,18 @@ function ColorProperty({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Select value={tokenId ?? "__none__"} onValueChange={(nextValue) => onTokenChange(nextValue === "__none__" ? null : nextValue)}>
+        <Select
+          value={tokenId ?? "__none__"}
+          onValueChange={(v) => onTokenChange(v === "__none__" ? null : v)}
+        >
           <SelectTrigger className="h-8 w-full bg-[#252525] border-[#3c3c3c] text-[11px] text-gray-300">
             <SelectValue placeholder="Use local value">
               {resolvedToken ? (
                 <span className="flex items-center gap-2">
-                  <span className="inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: resolvedToken.value }} />
+                  <span
+                    className="inline-flex h-2 w-2 rounded-full"
+                    style={{ backgroundColor: resolvedToken.value }}
+                  />
                   <span>{resolvedToken.name}</span>
                 </span>
               ) : (
@@ -657,14 +871,23 @@ function ColorProperty({
             {tokenOptions.map((token) => (
               <SelectItem key={token.id} value={token.id}>
                 <span className="flex items-center gap-2">
-                  <span className="inline-flex h-2.5 w-2.5 rounded-full border border-white/20" style={{ backgroundColor: token.value }} />
+                  <span
+                    className="inline-flex h-2.5 w-2.5 rounded-full border border-white/20"
+                    style={{ backgroundColor: token.value }}
+                  />
                   <span>{token.name}</span>
                 </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-[11px]" onClick={onClearOverride}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 px-2 text-[11px]"
+          onClick={onClearOverride}
+        >
           Reset
         </Button>
       </div>
@@ -685,7 +908,7 @@ function TextProperty({
   value: string;
   error?: string;
   onChange: (value: string) => void;
-  onBlur: () => void;
+  onBlur: (event: React.FocusEvent<HTMLInputElement>) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 }) {
   return (
@@ -694,7 +917,7 @@ function TextProperty({
       <input
         type="text"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         onKeyDown={onKeyDown}
         className="w-full px-2 py-1 bg-[#252525] border border-[#3c3c3c] rounded text-xs focus:border-[#5b9dd9] outline-none text-gray-200"
@@ -724,7 +947,7 @@ function CheckboxProperty({
           id={inputId}
           type="checkbox"
           checked={checked}
-          onChange={(event) => onCheckedChange(event.target.checked)}
+          onChange={(e) => onCheckedChange(e.target.checked)}
           className="w-4 h-4 bg-[#252525] border border-[#3c3c3c] rounded cursor-pointer accent-[#5b9dd9]"
         />
         <label htmlFor={inputId} className="text-xs text-gray-300 cursor-pointer">
