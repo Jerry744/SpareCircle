@@ -105,6 +105,8 @@ export function emitSwitch(widget: LvglWidgetIR): string {
   ];
 
   if (widget.fillExpression) {
+    lines.push(`  lv_obj_set_style_bg_color(${widget.cName}, ${widget.fillExpression}, LV_PART_MAIN);`);
+    lines.push(`  lv_obj_set_style_bg_opa(${widget.cName}, LV_OPA_COVER, LV_PART_MAIN);`);
     lines.push(`  lv_obj_set_style_bg_color(${widget.cName}, ${widget.fillExpression}, LV_PART_INDICATOR | LV_STATE_CHECKED);`);
     lines.push(`  lv_obj_set_style_bg_opa(${widget.cName}, LV_OPA_COVER, LV_PART_INDICATOR | LV_STATE_CHECKED);`);
   }

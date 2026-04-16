@@ -173,7 +173,7 @@ export const WIDGET_EDITABLE_PROPERTIES: Record<WidgetType, ReadonlySet<Editable
   Screen: new Set(["width", "height", "fill", "visible"]),
   Container: new Set(["x", "y", "width", "height", "fill", "visible"]),
   Panel: new Set(["x", "y", "width", "height", "fill", "visible"]),
-  Label: new Set(["x", "y", "width", "height", "text", "textColor", "visible"]),
+  Label: new Set(["x", "y", "width", "height", "fill", "text", "textColor", "visible"]),
   Button: new Set(["x", "y", "width", "height", "text", "fill", "textColor", "visible", "checked"]),
   Slider: new Set(["x", "y", "width", "height", "fill", "value", "visible"]),
   Switch: new Set(["x", "y", "width", "height", "fill", "checked", "visible"]),

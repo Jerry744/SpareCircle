@@ -136,6 +136,14 @@ export function CanvasViewport() {
     ctx.globalAlpha = 1;
   };
 
+  // Convert a #rrggbb hex color to an rgba(...) string with the given alpha
+  const hexWithAlpha = (hex: string, alpha: number): string => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  };
+
   const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) => {
     const safeRadius = Math.min(radius, width / 2, height / 2);
 
@@ -308,8 +316,9 @@ export function CanvasViewport() {
       const knobR = trackR - 3;
       const knobX = isOn ? absX + widget.width - trackR : absX + trackR;
       const knobY = absY + widget.height / 2;
-      // Track: fill color when on, dark gray when off
-      ctx.fillStyle = isOn ? resolveWidgetColor(project, widget, "fill") : "#4b5563";
+      // Track: always use fill color; opacity signals off state
+      const trackColor = resolveWidgetColor(project, widget, "fill");
+      ctx.fillStyle = isOn ? trackColor : hexWithAlpha(trackColor, 0.45);
       drawRoundedRect(ctx, absX, absY, widget.width, widget.height, trackR);
       ctx.fill();
       ctx.strokeStyle = "rgba(0,0,0,0.15)";

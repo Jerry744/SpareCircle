@@ -59,7 +59,7 @@ const WIDGET_FIELD_SCHEMA: Record<WidgetNode["type"], EditableWidgetProperty[]> 
   Screen:    ["width", "height", "fill"],
   Container: ["x", "y", "width", "height", "fill"],
   Panel:     ["x", "y", "width", "height", "fill"],
-  Label:     ["x", "y", "width", "height", "text", "textColor"],
+  Label:     ["x", "y", "width", "height", "fill", "text", "textColor"],
   Button:    ["x", "y", "width", "height", "fill", "textColor", "checked"],
   Slider:    ["x", "y", "width", "height", "fill", "value"],
   Switch:    ["x", "y", "width", "height", "fill", "checked"],

@@ -123,8 +123,9 @@ export function hexToColorExpression(hex: string, format: ColorFormat): string {
     if (!rgb) {
       return "lv_color_white()";
     }
-    const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
-    return luminance >= 128 ? "lv_color_white()" : "lv_color_black()";
+    // Normalize perceptual luminance to [0, 1] and threshold at 50%
+    const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+    return luminance >= 0.5 ? "lv_color_white()" : "lv_color_black()";
   }
   if (format === "grayscale8") {
     const rgb = hexToRgb(normalized);

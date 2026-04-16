@@ -11,7 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import { useEditorBackend } from "../backend/editorStore";
+import { getActiveScreenFromProject, useEditorBackend } from "../backend/editorStore";
 
 interface BottomPanelProps {
   activeTab: string;
@@ -317,8 +317,20 @@ const COLOR_FORMAT_OPTIONS = [
 function SettingsPanel() {
   const {
     state: { project },
-    actions: { setColorFormat },
+    actions: { setColorFormat, updateScreenMeta },
   } = useEditorBackend();
+
+  const activeScreen = getActiveScreenFromProject(project);
+  const [widthDraft, setWidthDraft] = useState<string | null>(null);
+  const [heightDraft, setHeightDraft] = useState<string | null>(null);
+
+  const commitDimension = (key: "width" | "height", draft: string | null, fallback: number) => {
+    const parsed = parseInt(draft ?? "", 10);
+    const value = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    updateScreenMeta(activeScreen.id, key, value);
+    if (key === "width") setWidthDraft(null);
+    else setHeightDraft(null);
+  };
 
   return (
     <div>
@@ -337,15 +349,28 @@ function SettingsPanel() {
           <div className="grid grid-cols-2 gap-2">
             <input
               type="text"
-              defaultValue="480"
+              value={widthDraft ?? String(activeScreen.meta.width)}
+              onChange={(e) => setWidthDraft(e.target.value)}
+              onBlur={() => commitDimension("width", widthDraft, activeScreen.meta.width)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { commitDimension("width", widthDraft, activeScreen.meta.width); e.currentTarget.blur(); }
+                if (e.key === "Escape") { setWidthDraft(null); e.currentTarget.blur(); }
+              }}
               className="px-3 py-2 bg-[#252525] border border-[#3c3c3c] rounded text-sm focus:border-[#5b9dd9] outline-none text-gray-200"
             />
             <input
               type="text"
-              defaultValue="320"
+              value={heightDraft ?? String(activeScreen.meta.height)}
+              onChange={(e) => setHeightDraft(e.target.value)}
+              onBlur={() => commitDimension("height", heightDraft, activeScreen.meta.height)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { commitDimension("height", heightDraft, activeScreen.meta.height); e.currentTarget.blur(); }
+                if (e.key === "Escape") { setHeightDraft(null); e.currentTarget.blur(); }
+              }}
               className="px-3 py-2 bg-[#252525] border border-[#3c3c3c] rounded text-sm focus:border-[#5b9dd9] outline-none text-gray-200"
             />
           </div>
+          <div className="mt-1 text-[11px] text-gray-500">Width × Height (px)</div>
         </div>
         <div>
           <label className="text-xs text-gray-400 mb-1 block">Color Format</label>
