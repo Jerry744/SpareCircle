@@ -1,6 +1,8 @@
 
   # SpareCircle
 
+  ![SpareCircle Header](./SpareCircleScreenshot.png)
+
   SpareCircle is an open source visual workflow and translation toolchain for LVGL-based UI projects.
 
   The project focuses on practical editor workflows: widget composition, hierarchy management, inspector-driven editing, and data export paths that map cleanly to LVGL development.
