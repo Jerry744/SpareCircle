@@ -17,7 +17,7 @@ import {
   type EditableWidgetPropertyValue,
   type WidgetNode,
 } from "../backend/editorStore";
-import type { ProjectSnapshot } from "../backend/types";
+import type { AlignmentOperation, ProjectSnapshot } from "../backend/types";
 import {
   getWidgetStyleTokenId,
   resolveWidgetColor,
@@ -57,22 +57,32 @@ const FIELD_CONFIG: Record<EditableWidgetProperty, InspectorField> = {
 // Position + style fields only; content/state/flags handled per-widget below
 const WIDGET_FIELD_SCHEMA: Record<WidgetNode["type"], EditableWidgetProperty[]> = {
   Screen:    ["width", "height", "fill"],
-  Container: ["x", "y", "width", "height", "fill"],
-  Panel:     ["x", "y", "width", "height", "fill"],
-  Label:     ["x", "y", "width", "height", "fill", "text", "textColor"],
-  Button:    ["x", "y", "width", "height", "fill", "textColor", "checked"],
-  Slider:    ["x", "y", "width", "height", "fill", "value"],
-  Switch:    ["x", "y", "width", "height", "fill", "checked"],
-  Checkbox:  ["x", "y", "width", "height", "text", "fill", "textColor", "checked"],
-  Radio:     ["x", "y", "width", "height", "fill", "textColor"],
-  Dropdown:  ["x", "y", "width", "height", "fill", "textColor"],
-  Image:     ["x", "y", "width", "height", "fill"],
+  Container: ["x", "y", "width", "height", "fill", "visible"],
+  Panel:     ["x", "y", "width", "height", "fill", "visible"],
+  Label:     ["x", "y", "width", "height", "fill", "text", "textColor", "visible"],
+  Button:    ["x", "y", "width", "height", "fill", "textColor", "checked", "visible"],
+  Slider:    ["x", "y", "width", "height", "fill", "value", "visible"],
+  Switch:    ["x", "y", "width", "height", "fill", "checked", "visible"],
+  Checkbox:  ["x", "y", "width", "height", "text", "fill", "textColor", "checked", "visible"],
+  Radio:     ["x", "y", "width", "height", "fill", "textColor", "visible"],
+  Dropdown:  ["x", "y", "width", "height", "fill", "textColor", "visible"],
+  Image:     ["x", "y", "width", "height", "fill", "visible"],
 };
 
 // Widgets that show a "Content" setup section
 const WIDGET_HAS_CONTENT = new Set<WidgetNode["type"]>(["Label", "Button", "Checkbox", "Radio", "Dropdown"]);
 // Widgets that show a generic "Initial State" section
 const WIDGET_HAS_INITIAL_STATE = new Set<WidgetNode["type"]>(["Slider", "Switch"]);
+const ALIGNMENT_ACTIONS: Array<{ operation: AlignmentOperation; label: string; title: string; kind: "align" | "distribute" }> = [
+  { operation: "align_left", label: "Left", title: "Align Left", kind: "align" },
+  { operation: "align_right", label: "Right", title: "Align Right", kind: "align" },
+  { operation: "align_top", label: "Top", title: "Align Top", kind: "align" },
+  { operation: "align_bottom", label: "Bottom", title: "Align Bottom", kind: "align" },
+  { operation: "align_h_center", label: "H Center", title: "Align Horizontal Center", kind: "align" },
+  { operation: "align_v_center", label: "V Center", title: "Align Vertical Center", kind: "align" },
+  { operation: "distribute_h", label: "Distribute H", title: "Distribute Horizontally", kind: "distribute" },
+  { operation: "distribute_v", label: "Distribute V", title: "Distribute Vertically", kind: "distribute" },
+];
 
 function getWidgetPropertyDraftValue(project: ProjectSnapshot, widget: WidgetNode, key: EditableWidgetProperty): string | boolean {
   switch (key) {
@@ -159,6 +169,7 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
     asset: true,
     content: true,
     state: true,
+    flags: true,
   });
   const [drafts, setDrafts] = useState<DraftMap>({});
   const [errors, setErrors] = useState<ErrorMap>({});
@@ -173,6 +184,8 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
       deleteAsset,
       setWidgetOptions,
       setWidgetSelectedOption,
+      batchUpdateWidgetProperty,
+      applyAlignmentOperation,
     },
   } = useEditorBackend();
 
@@ -282,11 +295,130 @@ export function InspectorPanel({ showHeader = true }: { showHeader?: boolean }) 
   }
 
   if (selectedWidgetIds.length > 1) {
+    const selectedWidgets = selectedWidgetIds
+      .map((id) => (activeScreenNodeIds.has(id) ? getWidgetById(project, id) : null))
+      .filter((w): w is WidgetNode => w !== null);
+
+    if (selectedWidgets.length === 0) {
+      return (
+        <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex items-center justify-center">
+          <div className="text-sm text-gray-500 text-center px-4">No valid widgets selected</div>
+        </div>
+      );
+    }
+
+    const firstType = selectedWidgets[0].type;
+    const sharedKeys = WIDGET_FIELD_SCHEMA[firstType].filter((key) =>
+      selectedWidgets.every((w) => WIDGET_FIELD_SCHEMA[w.type].includes(key)),
+    );
+    const sharedFields = sharedKeys.map((k) => FIELD_CONFIG[k]);
+
+    const aggregated: Partial<Record<EditableWidgetProperty, string | boolean | "Mixed">> = {};
+    for (const field of sharedFields) {
+      const values = selectedWidgets.map((w) => getWidgetPropertyDraftValue(project, w, field.key));
+      aggregated[field.key] = values.every((v) => v === values[0]) ? values[0] : "Mixed";
+    }
+
+    const batchCommit = (field: InspectorField, value: string | boolean) => {
+      if (value === "Mixed") return;
+      const result = validateField(selectedWidgets[0], field, value);
+      if (!result.ok) return;
+      batchUpdateWidgetProperty(selectedWidgetIds, field.key, result.normalized);
+    };
+
+    const posFields = sharedFields.filter((f) => f.section === "position");
+    const styleFields = sharedFields.filter((f) => f.section === "style");
+    const flagFields = sharedFields.filter((f) => f.section === "flags");
+    const alignDisabled = selectedWidgetIds.length < 2;
+    const distributeDisabled = selectedWidgetIds.length < 3;
+
     return (
-      <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex items-center justify-center">
-        <div className="text-sm text-gray-400 text-center px-4 space-y-2">
-          <div>{selectedWidgetIds.length} widgets selected</div>
-          <div className="text-xs text-gray-500">Select a single widget to edit properties.</div>
+      <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex flex-col">
+        {showHeader ? (
+          <div className="h-10 flex items-center px-3 border-b border-[#1e1e1e]">
+            <span className="text-xs font-semibold text-gray-400">INSPECTOR</span>
+          </div>
+        ) : null}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-3 border-b border-[#1e1e1e]">
+            <div className="text-xs text-gray-500 mb-1">MULTI-SELECT</div>
+            <div className="font-semibold text-gray-100">{selectedWidgetIds.length} widgets selected</div>
+            <div className="text-xs text-gray-400 mt-1">Editing shared fields</div>
+          </div>
+
+          <PropertySection title="Align & Distribute" expanded={expandedSections.state} onToggle={() => toggleSection("state")}>
+            <div className="grid grid-cols-2 gap-2">
+              {ALIGNMENT_ACTIONS.map((item) => {
+                const disabled = item.kind === "align" ? alignDisabled : distributeDisabled;
+
+                return (
+                  <button
+                    key={item.operation}
+                    type="button"
+                    title={item.title}
+                    disabled={disabled}
+                    onClick={() => applyAlignmentOperation(item.operation)}
+                    className="rounded border border-[#3c3c3c] bg-[#252525] px-2 py-2 text-xs text-gray-300 transition-colors hover:bg-[#323232] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </PropertySection>
+
+          {posFields.length > 0 && (
+            <PropertySection title="Position & Size" expanded={expandedSections.position} onToggle={() => toggleSection("position")}>
+              {posFields.map((field) => (
+                <BatchPropertyRow
+                  key={field.key}
+                  label={field.label}
+                  value={aggregated[field.key] as string | boolean}
+                  unit={field.unit}
+                  isMixed={aggregated[field.key] === "Mixed"}
+                  onCommit={(v) => batchCommit(field, v)}
+                />
+              ))}
+            </PropertySection>
+          )}
+
+          {styleFields.length > 0 && (
+            <PropertySection title="Style" expanded={expandedSections.style} onToggle={() => toggleSection("style")}>
+              {styleFields.map((field) => (
+                <BatchColorRow
+                  key={field.key}
+                  label={field.label}
+                  value={aggregated[field.key] as string}
+                  isMixed={aggregated[field.key] === "Mixed"}
+                  onCommit={(v) => batchCommit(field, v)}
+                />
+              ))}
+            </PropertySection>
+          )}
+
+          {flagFields.length > 0 && (
+            <PropertySection title="Flags" expanded={expandedSections.flags ?? true} onToggle={() => toggleSection("flags")}>
+              {flagFields.map((field) => (
+                <div key={field.key} className="flex items-center justify-between">
+                  <label className="text-xs text-gray-400">{field.label}</label>
+                  {aggregated[field.key] === "Mixed" ? (
+                    <span className="text-xs text-gray-500 italic">Mixed</span>
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={Boolean(aggregated[field.key])}
+                      onChange={(e) => batchCommit(field, e.target.checked)}
+                      className="w-4 h-4 accent-[#5b9dd9]"
+                    />
+                  )}
+                </div>
+              ))}
+            </PropertySection>
+          )}
+
+          {sharedFields.length === 0 && (
+            <div className="p-4 text-xs text-gray-500 text-center">No shared editable fields</div>
+          )}
         </div>
       </div>
     );
@@ -923,6 +1055,97 @@ function TextProperty({
         className="w-full px-2 py-1 bg-[#252525] border border-[#3c3c3c] rounded text-xs focus:border-[#5b9dd9] outline-none text-gray-200"
       />
       {error ? <div className="text-[11px] text-rose-400">{error}</div> : null}
+    </div>
+  );
+}
+
+function BatchPropertyRow({
+  label,
+  value,
+  unit,
+  isMixed,
+  onCommit,
+}: {
+  label: string;
+  value: string | boolean;
+  unit?: string;
+  isMixed: boolean;
+  onCommit: (v: string | boolean) => void;
+}) {
+  const [draft, setDraft] = useState(isMixed ? "" : String(value));
+  useEffect(() => {
+    setDraft(isMixed ? "" : String(value));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMixed, String(value)]);
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-gray-400">{label}</label>
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            value={draft}
+            placeholder={isMixed ? "Mixed" : ""}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => { if (draft.trim()) onCommit(draft); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); if (draft.trim()) onCommit(draft); e.currentTarget.blur(); }
+              if (e.key === "Escape") { setDraft(isMixed ? "" : String(value)); e.currentTarget.blur(); }
+            }}
+            className={`w-20 px-2 py-1 bg-[#252525] border border-[#3c3c3c] rounded text-xs focus:border-[#5b9dd9] outline-none ${isMixed ? "text-gray-500 italic" : "text-gray-200"}`}
+          />
+          {unit && <span className="text-xs text-gray-500">{unit}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BatchColorRow({
+  label,
+  value,
+  isMixed,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  isMixed: boolean;
+  onCommit: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState(isMixed ? "" : value);
+  useEffect(() => {
+    setDraft(isMixed ? "" : value);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMixed, value]);
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-gray-400">{label}</label>
+        <div className="flex items-center gap-2">
+          {!isMixed && (
+            <input
+              type="color"
+              value={draft || "#000000"}
+              onChange={(e) => { setDraft(e.target.value); onCommit(e.target.value); }}
+              className="w-8 h-6 bg-[#252525] border border-[#3c3c3c] rounded cursor-pointer"
+            />
+          )}
+          <input
+            type="text"
+            value={draft}
+            placeholder={isMixed ? "Mixed" : ""}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => { if (draft.trim()) onCommit(draft); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); if (draft.trim()) onCommit(draft); e.currentTarget.blur(); }
+              if (e.key === "Escape") { setDraft(isMixed ? "" : value); e.currentTarget.blur(); }
+            }}
+            className={`w-24 px-2 py-1 bg-[#252525] border border-[#3c3c3c] rounded text-xs focus:border-[#5b9dd9] outline-none ${isMixed ? "text-gray-500 italic" : "text-gray-200"}`}
+          />
+        </div>
+      </div>
     </div>
   );
 }

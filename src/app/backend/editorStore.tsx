@@ -9,12 +9,15 @@ export type {
   EditableWidgetPropertyValue,
   WidgetNode,
   ScreenModel,
+  CanvasSnapSettings,
   ProjectSnapshot,
   HydrateProjectResult,
   ExportLvglResult,
   Point,
   EditorBackendValue,
 } from "./types";
+
+export { DEFAULT_CANVAS_SNAP } from "./types";
 
 export type {
   WidgetTreeNode,

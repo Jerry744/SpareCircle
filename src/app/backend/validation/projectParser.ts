@@ -1,5 +1,7 @@
 import {
   KNOWN_WIDGET_EVENTS,
+  DEFAULT_CANVAS_SNAP,
+  type CanvasSnapSettings,
   type ProjectSnapshot,
   type ScreenMeta,
   type ScreenModel,
@@ -10,6 +12,17 @@ import { isRecord, isColorFormat, isValidColorString } from "./helpers";
 import { parseNormalizedWidget, parseLegacyWidget, flattenLegacyTree } from "./widgetParser";
 import { parseAssets } from "./assetParser";
 import { parseStyleTokens } from "./tokenParser";
+
+function parseCanvasSnap(input: unknown): CanvasSnapSettings {
+  if (!isRecord(input)) return { ...DEFAULT_CANVAS_SNAP };
+  return {
+    pixelSnapEnabled: typeof input.pixelSnapEnabled === "boolean" ? input.pixelSnapEnabled : DEFAULT_CANVAS_SNAP.pixelSnapEnabled,
+    magnetSnapEnabled: typeof input.magnetSnapEnabled === "boolean" ? input.magnetSnapEnabled : DEFAULT_CANVAS_SNAP.magnetSnapEnabled,
+    snapThresholdPx: typeof input.snapThresholdPx === "number" && Number.isFinite(input.snapThresholdPx) && input.snapThresholdPx > 0
+      ? input.snapThresholdPx
+      : DEFAULT_CANVAS_SNAP.snapThresholdPx,
+  };
+}
 
 export const CURRENT_PROJECT_SCHEMA_VERSION = 1;
 export const MAX_ASSET_SIZE_BYTES = 1024 * 1024;
@@ -165,6 +178,7 @@ function parseNormalizedProject(
   if (!hasActiveScreen) return { ok: false, error: "Project.activeScreenId does not exist in screens" };
 
   const colorFormat = isColorFormat(input.colorFormat) ? input.colorFormat : undefined;
+  const canvasSnap = parseCanvasSnap(input.canvasSnap);
 
   return {
     ok: true,
@@ -176,6 +190,7 @@ function parseNormalizedProject(
       styleTokens: styleTokensResult.tokens,
       assets: assetsResult.assets,
       colorFormat,
+      canvasSnap,
     },
     warning: schemaVersionResult.warning,
   };
@@ -239,6 +254,7 @@ function parseLegacyProject(
       widgetsById,
       styleTokens: [],
       assets: {},
+      canvasSnap: { ...DEFAULT_CANVAS_SNAP },
     },
     warning: `Legacy project format upgraded to schema v${CURRENT_PROJECT_SCHEMA_VERSION}.`,
   };
@@ -371,5 +387,6 @@ export function createInitialProject(): ProjectSnapshot {
       value: token.value,
     })),
     assets: {},
+    canvasSnap: { ...DEFAULT_CANVAS_SNAP },
   };
 }

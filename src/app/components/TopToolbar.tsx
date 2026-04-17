@@ -1,17 +1,19 @@
-import { 
-  Save, 
-  FolderOpen, 
-  Play, 
-  Download, 
-  Settings, 
-  Undo, 
+import {
+  Save,
+  FolderOpen,
+  Play,
+  Download,
+  Settings,
+  Undo,
   Redo,
   Grid,
   Maximize2,
   Sun,
   Moon,
   Monitor,
-  Palette
+  Palette,
+  Magnet,
+  Grid2x2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useEditorBackend } from "../backend/editorStore";
@@ -28,8 +30,11 @@ export function TopToolbar() {
       interaction,
       project,
     },
-    actions: { undo, redo, serializeProject, hydrateProject, exportLvglC },
+    actions: { undo, redo, serializeProject, hydrateProject, exportLvglC, setCanvasSnapSettings },
   } = useEditorBackend();
+
+  const pixelSnapEnabled = project.canvasSnap?.pixelSnapEnabled ?? false;
+  const magnetSnapEnabled = project.canvasSnap?.magnetSnapEnabled ?? true;
 
   const canUndo = history.past.length > 0 && !interaction;
   const canRedo = history.future.length > 0 && !interaction;
@@ -146,6 +151,26 @@ export function TopToolbar() {
         <button className="px-3 py-1.5 hover:bg-[#3c3c3c] rounded flex items-center gap-2 transition-colors text-gray-300">
           <Grid size={16} />
           <span className="text-sm">Grid</span>
+        </button>
+        <button
+          onClick={() => setCanvasSnapSettings({ pixelSnapEnabled: !pixelSnapEnabled })}
+          title="Pixel Snap"
+          aria-label="Pixel Snap"
+          aria-pressed={pixelSnapEnabled}
+          className={`px-3 py-1.5 rounded flex items-center gap-2 transition-colors ${pixelSnapEnabled ? "bg-[#5b9dd9] text-white" : "hover:bg-[#3c3c3c] text-gray-300"}`}
+        >
+          <Grid2x2 size={16} />
+          <span className="text-sm">Pixel</span>
+        </button>
+        <button
+          onClick={() => setCanvasSnapSettings({ magnetSnapEnabled: !magnetSnapEnabled })}
+          title="Magnet Snap"
+          aria-label="Magnet Snap"
+          aria-pressed={magnetSnapEnabled}
+          className={`px-3 py-1.5 rounded flex items-center gap-2 transition-colors ${magnetSnapEnabled ? "bg-[#5b9dd9] text-white" : "hover:bg-[#3c3c3c] text-gray-300"}`}
+        >
+          <Magnet size={16} />
+          <span className="text-sm">Snap</span>
         </button>
         <button
           onClick={() => setTokensOpen(true)}

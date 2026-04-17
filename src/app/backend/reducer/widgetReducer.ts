@@ -127,6 +127,31 @@ export function handleClearWidgetProperty(state: EditorState, action: EditorActi
   return commitProjectChange(state, nextProject, [widgetId]);
 }
 
+export function handleBatchUpdateWidgetProperty(state: EditorState, action: EditorAction): EditorState {
+  const widgetIds = action.widgetIds as string[];
+  const propertyName = action.propertyName as string;
+  const value = action.value;
+
+  if (!Array.isArray(widgetIds) || widgetIds.length === 0) return state;
+  if (!isEditableWidgetProperty(propertyName) || state.interaction) return state;
+
+  const normalizedValue = normalizeEditableWidgetPropertyValue(propertyName, value as string | number | boolean);
+  if (normalizedValue === null) return state;
+
+  const eligibleIds = widgetIds.filter((id) => {
+    const widget = getWidgetById(state.project, id);
+    return widget && canEditWidgetProperty(widget.type, propertyName);
+  });
+  if (eligibleIds.length === 0) return state;
+
+  const nextProject = transformProjectWidgets(state.project, eligibleIds, (widget: WidgetNode) => ({
+    ...widget,
+    [propertyName]: normalizedValue,
+  }));
+
+  return commitProjectChange(state, nextProject, widgetIds);
+}
+
 export function handleSetWidgetOptions(state: EditorState, action: EditorAction): EditorState {
   const widgetId = action.widgetId as string;
   const options = action.options as string[];

@@ -1,5 +1,5 @@
 import { ZoomIn, ZoomOut, Maximize } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   buildWidgetTree,
   canContainChildren,
@@ -9,7 +9,9 @@ import {
   useEditorBackend,
   type Point,
   type WidgetTreeNode,
+  type ProjectSnapshot,
 } from "../backend/editorStore";
+import { collectSnapGuides } from "../backend/interaction";
 import { resolveWidgetColor } from "../backend/validation";
 
 interface Camera {
@@ -31,10 +33,30 @@ type HitResult = {
   mode: "body" | "resize";
 };
 
+interface MarqueeState {
+  startWorld: Point;
+  currentWorld: Point;
+  additive: boolean;
+}
+
+function filterTopLevelIds(widgetIds: string[], project: ProjectSnapshot): string[] {
+  const selected = new Set(widgetIds);
+  return widgetIds.filter((id) => {
+    let parentId = project.widgetsById[id]?.parentId ?? null;
+    while (parentId) {
+      if (selected.has(parentId)) return false;
+      parentId = project.widgetsById[parentId]?.parentId ?? null;
+    }
+    return true;
+  });
+}
+
 export function CanvasViewport() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
+  const [marquee, setMarquee] = useState<MarqueeState | null>(null);
+  const marqueeRef = useRef<MarqueeState | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isMiddlePanning, setIsMiddlePanning] = useState(false);
@@ -49,6 +71,7 @@ export function CanvasViewport() {
     widgetIds: string[];
     handle?: "se";
   } | null>(null);
+  const snapGuidesRef = useRef<{ xGuides: number[]; yGuides: number[] } | null>(null);
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
   const {
@@ -65,6 +88,7 @@ export function CanvasViewport() {
       updateInteraction,
       commitInteraction,
       cancelInteraction,
+      setSelection,
     },
   } = useEditorBackend();
 
@@ -487,6 +511,48 @@ export function CanvasViewport() {
 
     ctx.restore();
 
+    // 绘制吸附参考线
+    if (dragStateRef.current && snapGuidesRef.current && project.canvasSnap?.magnetSnapEnabled) {
+      const guides = snapGuidesRef.current;
+      ctx.save();
+      ctx.strokeStyle = "rgba(91,157,217,0.35)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      for (const xVal of guides.xGuides) {
+        const sx = worldToScreen(xVal, 0);
+        ctx.beginPath();
+        ctx.moveTo(sx.x, 0);
+        ctx.lineTo(sx.x, canvas.height);
+        ctx.stroke();
+      }
+      for (const yVal of guides.yGuides) {
+        const sy = worldToScreen(0, yVal);
+        ctx.beginPath();
+        ctx.moveTo(0, sy.y);
+        ctx.lineTo(canvas.width, sy.y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // 绘制框选矩形
+    if (marquee) {
+      const s = worldToScreen(marquee.startWorld.x, marquee.startWorld.y);
+      const e = worldToScreen(marquee.currentWorld.x, marquee.currentWorld.y);
+      const rx = Math.min(s.x, e.x);
+      const ry = Math.min(s.y, e.y);
+      const rw = Math.abs(e.x - s.x);
+      const rh = Math.abs(e.y - s.y);
+      ctx.strokeStyle = "#5b9dd9";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.fillStyle = "rgba(91,157,217,0.08)";
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.setLineDash([]);
+    }
+
     // 绘制坐标轴（调试用）
     const origin = worldToScreen(0, 0);
     ctx.strokeStyle = "#ef4444";
@@ -521,7 +587,7 @@ export function CanvasViewport() {
   // 每次camera变化时重新渲染
   useEffect(() => {
     render();
-  }, [camera, project, selectedWidgetIds]);
+  }, [camera, project, selectedWidgetIds, marquee]);
 
   // Block browser pinch and map Safari gesture pinch to canvas zoom.
   useEffect(() => {
@@ -692,13 +758,31 @@ export function CanvasViewport() {
 
     const world = screenToWorldRef(e.clientX, e.clientY);
     const target = getHitTarget(world);
+    const additive = e.metaKey || e.ctrlKey || e.shiftKey;
 
     if (!target) {
-      clearSelection();
+      // Start marquee selection instead of immediately clearing
+      const mState: MarqueeState = { startWorld: world, currentWorld: world, additive };
+      marqueeRef.current = mState;
+      setMarquee(mState);
+      if (!additive) clearSelection();
       return;
     }
 
-    const additive = e.metaKey || e.ctrlKey || e.shiftKey;
+    // If clicking an already-selected widget without modifier, preserve group selection for drag
+    if (!additive && selectedWidgetIds.includes(target.widget.id) && selectedWidgetIds.length > 1) {
+      if (target.mode === "resize") {
+        const resizeIds = [target.widget.id];
+        dragStateRef.current = { kind: "resize", pointerStart: world, widgetIds: resizeIds, handle: "se" };
+        beginInteraction("resize", resizeIds, world, "se");
+        return;
+      }
+      const dragIds = filterTopLevelIds(selectedWidgetIds, project);
+      dragStateRef.current = { kind: "move", pointerStart: world, widgetIds: dragIds };
+      beginInteraction("move", dragIds, world);
+      return;
+    }
+
     const nextSelection = additive
       ? (selectedWidgetIds.includes(target.widget.id)
           ? selectedWidgetIds.filter((widgetId) => widgetId !== target.widget.id)
@@ -726,16 +810,16 @@ export function CanvasViewport() {
     dragStateRef.current = {
       kind: "move",
       pointerStart: world,
-      widgetIds: nextSelection,
+      widgetIds: filterTopLevelIds(nextSelection, project),
     };
-    beginInteraction("move", nextSelection, world);
+    beginInteraction("move", filterTopLevelIds(nextSelection, project), world);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isPanning && isSpacePressed) {
       const dx = e.clientX - lastMousePos.current.x;
       const dy = e.clientY - lastMousePos.current.y;
-      
+
       setCamera(prev => ({
         ...prev,
         x: prev.x + dx / prev.zoom,
@@ -747,7 +831,7 @@ export function CanvasViewport() {
     } else if (isMiddlePanning) {
       const dx = e.clientX - lastMousePos.current.x;
       const dy = e.clientY - lastMousePos.current.y;
-      
+
       setCamera(prev => ({
         ...prev,
         x: prev.x + dx / prev.zoom,
@@ -758,11 +842,62 @@ export function CanvasViewport() {
       return;
     }
 
+    if (marqueeRef.current) {
+      const world = screenToWorldRef(e.clientX, e.clientY);
+      const updated = { ...marqueeRef.current, currentWorld: world };
+      marqueeRef.current = updated;
+      setMarquee({ ...updated });
+      return;
+    }
+
     if (dragStateRef.current) {
       const world = screenToWorldRef(e.clientX, e.clientY);
+      if (project.canvasSnap?.magnetSnapEnabled) {
+        const excludeIds = new Set(dragStateRef.current.widgetIds);
+        snapGuidesRef.current = collectSnapGuides(project, excludeIds, activeScreen.meta);
+      } else {
+        snapGuidesRef.current = null;
+      }
       updateInteraction(world);
     }
   };
+
+  const finalizeMarquee = useCallback(() => {
+    const m = marqueeRef.current;
+    if (!m) return;
+    marqueeRef.current = null;
+    setMarquee(null);
+
+    if (!rootTree) return;
+    const allWidgets = flattenWidgetTree(rootTree);
+    const dx = m.currentWorld.x - m.startWorld.x;
+    const dy = m.currentWorld.y - m.startWorld.y;
+    const minX = Math.min(m.startWorld.x, m.currentWorld.x);
+    const maxX = Math.max(m.startWorld.x, m.currentWorld.x);
+    const minY = Math.min(m.startWorld.y, m.currentWorld.y);
+    const maxY = Math.max(m.startWorld.y, m.currentWorld.y);
+    const useContains = dx >= 0 && dy >= 0;
+
+    const hitIds: string[] = [];
+    for (const item of allWidgets) {
+      if (item.widget.type === "Screen" || item.widget.visible === false) continue;
+      const wL = item.absX, wR = item.absX + item.widget.width;
+      const wT = item.absY, wB = item.absY + item.widget.height;
+      if (useContains) {
+        if (wL >= minX && wR <= maxX && wT >= minY && wB <= maxY) hitIds.push(item.widget.id);
+      } else {
+        if (wL < maxX && wR > minX && wT < maxY && wB > minY) hitIds.push(item.widget.id);
+      }
+    }
+
+    if (hitIds.length > 0) {
+      const nextSelection = m.additive ? [...new Set([...selectedWidgetIds, ...hitIds])] : hitIds;
+      setSelection(nextSelection);
+    } else if (!m.additive) {
+      clearSelection();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootTree, selectedWidgetIds, setSelection, clearSelection]);
 
   const handleMouseUp = () => {
     if (isPanning) {
@@ -777,9 +912,15 @@ export function CanvasViewport() {
       }
     }
 
+    if (marqueeRef.current) {
+      finalizeMarquee();
+      return;
+    }
+
     if (dragStateRef.current) {
       commitInteraction();
       dragStateRef.current = null;
+      snapGuidesRef.current = null;
     }
   };
 

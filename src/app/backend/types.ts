@@ -1,5 +1,14 @@
 export type WidgetType = "Screen" | "Container" | "Panel" | "Label" | "Button" | "Slider" | "Switch" | "Checkbox" | "Radio" | "Dropdown" | "Image";
 export type AssetMimeType = "image/png" | "image/jpeg" | "image/gif";
+export type AlignmentOperation =
+  | "align_left"
+  | "align_right"
+  | "align_top"
+  | "align_bottom"
+  | "align_h_center"
+  | "align_v_center"
+  | "distribute_h"
+  | "distribute_v";
 
 export type EditableWidgetProperty = "x" | "y" | "width" | "height" | "text" | "fill" | "textColor" | "visible" | "value" | "checked";
 export type EditableWidgetPropertyValue = string | number | boolean;
@@ -83,6 +92,18 @@ export interface ScreenModel {
   meta: ScreenMeta;
 }
 
+export interface CanvasSnapSettings {
+  pixelSnapEnabled: boolean;
+  magnetSnapEnabled: boolean;
+  snapThresholdPx: number;
+}
+
+export const DEFAULT_CANVAS_SNAP: CanvasSnapSettings = {
+  pixelSnapEnabled: false,
+  magnetSnapEnabled: true,
+  snapThresholdPx: 6,
+};
+
 export interface ProjectSnapshot {
   schemaVersion: number;
   screens: ScreenModel[];
@@ -91,6 +112,7 @@ export interface ProjectSnapshot {
   styleTokens: StyleToken[];
   assets: Record<string, AssetItem>;
   colorFormat?: ColorFormat;
+  canvasSnap?: CanvasSnapSettings;
 }
 
 export type HydrateProjectResult = { ok: true; warning?: string } | { ok: false; error: string };
@@ -156,8 +178,14 @@ export interface EditorBackendValue {
     setWidgetSelectedOption: (widgetId: string, index: number) => void;
     upsertWidgetEventBinding: (widgetId: string, binding: EventBinding) => void;
     removeWidgetEventBinding: (widgetId: string, event: WidgetEventType) => void;
+    batchUpdateWidgetProperty: (widgetIds: string[], propertyName: EditableWidgetProperty, value: EditableWidgetPropertyValue) => void;
+    batchUpsertWidgetEventBinding: (widgetIds: string[], binding: EventBinding) => void;
+    batchRemoveWidgetEventBinding: (widgetIds: string[], event: WidgetEventType) => void;
+    applyAlignmentOperation: (operation: AlignmentOperation) => void;
+    setSelection: (widgetIds: string[]) => void;
     updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) => void;
     setColorFormat: (format: ColorFormat) => void;
+    setCanvasSnapSettings: (settings: Partial<CanvasSnapSettings>) => void;
     serializeProject: () => string;
     hydrateProject: (serializedProject: string) => HydrateProjectResult;
     exportLvglC: () => Promise<ExportLvglResult>;

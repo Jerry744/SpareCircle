@@ -7,13 +7,15 @@ import { InspectorPanel } from "../InspectorPanel";
 function TestActions() {
   const {
     state: { project },
-    actions: { addWidget, createScreen, setActiveScreen },
+    actions: { addWidget, createScreen, setActiveScreen, setSelection },
   } = useEditorBackend();
 
   return (
     <div>
       <button onClick={() => addWidget("Panel1", "Checkbox", 10, 10)}>add-checkbox</button>
       <button onClick={() => addWidget("Panel1", "Radio", 10, 10)}>add-radio</button>
+      <button onClick={() => setSelection(["TempLabel", "Button1"])}>select-temp-button</button>
+      <button onClick={() => setSelection(["Label1", "Panel1"])}>select-label-panel</button>
       <button onClick={() => createScreen()}>create-screen</button>
       <button
         onClick={() => {
@@ -24,6 +26,21 @@ function TestActions() {
       >
         switch-to-screen-2
       </button>
+    </div>
+  );
+}
+
+function PositionReadout() {
+  const {
+    state: { project },
+  } = useEditorBackend();
+
+  return (
+    <div>
+      <div data-testid="label1-x">{project.widgetsById.Label1.x}</div>
+      <div data-testid="panel1-x">{project.widgetsById.Panel1.x}</div>
+      <div data-testid="temp-x">{project.widgetsById.TempLabel.x}</div>
+      <div data-testid="button1-x">{project.widgetsById.Button1.x}</div>
     </div>
   );
 }
@@ -82,5 +99,28 @@ describe("screen context isolation", () => {
     // Radio content section shows an options list
     expect(screen.getByText("Options")).toBeInTheDocument();
     expect(screen.getByText("+ Add")).toBeInTheDocument();
+  });
+
+  it("uses the latest selection when triggering multi-select alignment from inspector", () => {
+    render(
+      <EditorBackendProvider>
+        <TestActions />
+        <InspectorPanel />
+        <PositionReadout />
+      </EditorBackendProvider>,
+    );
+
+    fireEvent.click(screen.getByText("select-temp-button"));
+    fireEvent.click(screen.getByRole("button", { name: "Left" }));
+
+    expect(screen.getByTestId("temp-x").textContent).toBe("36");
+    expect(screen.getByTestId("button1-x").textContent).toBe("36");
+
+    fireEvent.click(screen.getByText("select-label-panel"));
+    fireEvent.click(screen.getByRole("button", { name: "Left" }));
+
+    expect(screen.getByTestId("label1-x").textContent).toBe("20");
+    expect(screen.getByTestId("panel1-x").textContent).toBe("20");
+    expect(screen.getByTestId("button1-x").textContent).toBe("36");
   });
 });

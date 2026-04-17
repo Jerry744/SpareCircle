@@ -20,8 +20,10 @@ import { getActiveScreen } from "./tree";
 import { generateLvglZip } from "./codegen/generator";
 import { loadActiveProjectFromIndexedDb, saveActiveProjectToIndexedDb } from "./persistence";
 import type {
+  AlignmentOperation,
   AssetItem,
   AssetMimeType,
+  CanvasSnapSettings,
   ColorFormat,
   EventBinding,
   EditableWidgetProperty,
@@ -190,9 +192,27 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "upsertWidgetEventBinding", widgetId, binding }),
       removeWidgetEventBinding: (widgetId: string, event: WidgetEventType) =>
         dispatch({ type: "removeWidgetEventBinding", widgetId, event }),
+      batchUpdateWidgetProperty: (widgetIds: string[], propertyName: EditableWidgetProperty, value: EditableWidgetPropertyValue) => {
+        if (widgetIds.length === 0) return;
+        dispatch({ type: "batchUpdateWidgetProperty", widgetIds, propertyName, value });
+      },
+      batchUpsertWidgetEventBinding: (widgetIds: string[], binding: EventBinding) => {
+        if (widgetIds.length === 0) return;
+        dispatch({ type: "batchUpsertWidgetEventBinding", widgetIds, binding });
+      },
+      batchRemoveWidgetEventBinding: (widgetIds: string[], event: WidgetEventType) => {
+        if (widgetIds.length === 0) return;
+        dispatch({ type: "batchRemoveWidgetEventBinding", widgetIds, event });
+      },
+      applyAlignmentOperation: (operation: AlignmentOperation) => {
+        if (state.selectedWidgetIds.length === 0) return;
+        dispatch({ type: "applyAlignmentOperation", operation, widgetIds: state.selectedWidgetIds });
+      },
+      setSelection: (widgetIds: string[]) => dispatch({ type: "setSelection", widgetIds }),
       updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) =>
         dispatch({ type: "updateScreenMeta", screenId, key, value }),
       setColorFormat: (format: ColorFormat) => dispatch({ type: "setColorFormat", format }),
+      setCanvasSnapSettings: (settings: Partial<CanvasSnapSettings>) => dispatch({ type: "setCanvasSnapSettings", settings }),
       serializeProject: () => serializeProjectSnapshot(state.project),
       hydrateProject: (serializedProject: string): HydrateProjectResult => {
         const result = deserializeProjectSnapshot(serializedProject);
@@ -221,7 +241,7 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
       undo: () => dispatch({ type: "undo" }),
       redo: () => dispatch({ type: "redo" }),
     }),
-    [state.project],
+    [state],
   );
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);

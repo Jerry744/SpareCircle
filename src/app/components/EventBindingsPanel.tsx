@@ -74,7 +74,7 @@ export function EventBindingsPanel({ showHeader = true }: { showHeader?: boolean
       project,
       selectedWidgetIds,
     },
-    actions: { upsertWidgetEventBinding, removeWidgetEventBinding },
+    actions: { upsertWidgetEventBinding, removeWidgetEventBinding, batchUpsertWidgetEventBinding, batchRemoveWidgetEventBinding },
   } = useEditorBackend();
 
   const activeScreen = getActiveScreenFromProject(project);
@@ -156,12 +156,114 @@ export function EventBindingsPanel({ showHeader = true }: { showHeader?: boolean
   }
 
   if (selectedWidgetIds.length > 1) {
+    const validIds = selectedWidgetIds.filter((id) => activeScreenNodeIds.has(id) && Boolean(project.widgetsById[id]));
+
+    const applyBatch = (event: WidgetEventType) => {
+      const draft = drafts[event];
+      if (draft.actionType === "none") {
+        batchRemoveWidgetEventBinding(validIds, event);
+        setDraft(event, (prev) => ({ ...prev, error: undefined }));
+        return;
+      }
+      if (draft.actionType === "switch_screen") {
+        if (!screenOptions.some((s) => s.id === draft.targetScreenId)) {
+          setDraft(event, (prev) => ({ ...prev, error: "请选择有效的目标 Screen" }));
+          return;
+        }
+        batchUpsertWidgetEventBinding(validIds, { event, action: { type: "switch_screen", targetScreenId: draft.targetScreenId } });
+        setDraft(event, (prev) => ({ ...prev, error: undefined }));
+        return;
+      }
+      if (!project.widgetsById[draft.targetWidgetId]) {
+        setDraft(event, (prev) => ({ ...prev, error: "请选择有效的目标 Widget" }));
+        return;
+      }
+      batchUpsertWidgetEventBinding(validIds, { event, action: { type: "toggle_visibility", targetWidgetId: draft.targetWidgetId } });
+      setDraft(event, (prev) => ({ ...prev, error: undefined }));
+    };
+
     return (
-      <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex items-center justify-center">
-        <div className="text-sm text-gray-400 text-center px-4 space-y-2">
-          <div>{selectedWidgetIds.length} widgets selected</div>
-          <div className="text-xs text-gray-500">Event editing for multi-select will be added later.</div>
-          <div className="text-xs text-gray-500">Select a single widget to edit event bindings.</div>
+      <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex flex-col">
+        {showHeader ? (
+          <div className="h-10 flex items-center px-3 border-b border-[#1e1e1e]">
+            <span className="text-xs font-semibold text-gray-400">EVENTS</span>
+          </div>
+        ) : null}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-3 border-b border-[#1e1e1e]">
+            <div className="text-xs text-gray-500 mb-1">MULTI-SELECT</div>
+            <div className="font-semibold text-gray-100">{selectedWidgetIds.length} widgets selected</div>
+            <div className="text-xs text-gray-400 mt-1">Batch event binding</div>
+          </div>
+          <div className="p-3 space-y-4">
+            {EVENT_OPTIONS.map((eventOption) => {
+              const draft = drafts[eventOption.value];
+              return (
+                <div key={eventOption.value} className="rounded border border-[#3a3a3a] bg-[#252525] p-3 space-y-2">
+                  <div className="text-xs font-semibold text-gray-300 uppercase tracking-wide">{eventOption.label}</div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-gray-500">Action</label>
+                    <select
+                      className="w-full rounded border border-[#3f3f3f] bg-[#1f1f1f] px-2 py-1.5 text-xs text-gray-200"
+                      value={draft.actionType}
+                      onChange={(e) => {
+                        const nextType = e.currentTarget.value as EventBindingDraft["actionType"];
+                        setDraft(eventOption.value, (prev) => ({ ...prev, actionType: nextType, error: undefined }));
+                      }}
+                    >
+                      <option value="none">None</option>
+                      <option value="switch_screen">Switch Screen</option>
+                      <option value="toggle_visibility">Toggle Visibility</option>
+                    </select>
+                  </div>
+                  {draft.actionType === "switch_screen" && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-gray-500">Target Screen</label>
+                      <select
+                        className="w-full rounded border border-[#3f3f3f] bg-[#1f1f1f] px-2 py-1.5 text-xs text-gray-200"
+                        value={draft.targetScreenId}
+                        onChange={(e) => setDraft(eventOption.value, (prev) => ({ ...prev, targetScreenId: e.currentTarget.value, error: undefined }))}
+                      >
+                        <option value="">Select screen</option>
+                        {screenOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {draft.actionType === "toggle_visibility" && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-gray-500">Target Widget</label>
+                      <select
+                        className="w-full rounded border border-[#3f3f3f] bg-[#1f1f1f] px-2 py-1.5 text-xs text-gray-200"
+                        value={draft.targetWidgetId}
+                        onChange={(e) => setDraft(eventOption.value, (prev) => ({ ...prev, targetWidgetId: e.currentTarget.value, error: undefined }))}
+                      >
+                        <option value="">Select widget</option>
+                        {widgetOptions.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {draft.error && <div className="text-[11px] text-rose-400">{draft.error}</div>}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      className="rounded bg-[#5b9dd9] px-2.5 py-1 text-xs text-white hover:bg-[#6ba8dd]"
+                      onClick={() => applyBatch(eventOption.value)}
+                    >
+                      Apply All
+                    </button>
+                    <button
+                      className="rounded border border-[#4a4a4a] px-2.5 py-1 text-xs text-gray-300 hover:bg-[#333333]"
+                      onClick={() => {
+                        batchRemoveWidgetEventBinding(validIds, eventOption.value);
+                        setDraft(eventOption.value, () => createEmptyDraft());
+                      }}
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );

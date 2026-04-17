@@ -1,5 +1,5 @@
 import { ChevronRight, ChevronDown, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   buildWidgetTree,
   canContainChildren,
@@ -47,13 +47,24 @@ function resolveDropPosition(widget: WidgetTreeNode, event: React.DragEvent<HTML
   return relativeY < 0.5 ? "before" : "after";
 }
 
+function collectVisibleIds(widget: WidgetTreeNode, expandedIds: Record<string, boolean>, depth: number = 0): string[] {
+  const ids: string[] = [widget.id];
+  const expanded = depth === 0 ? true : (expandedIds[widget.id] ?? true);
+  if (expanded && widget.children.length > 0) {
+    for (const child of widget.children) {
+      ids.push(...collectVisibleIds(child, expandedIds, depth + 1));
+    }
+  }
+  return ids;
+}
+
 export function HierarchyPanel() {
   const {
     state: {
       project,
       selectedWidgetIds,
     },
-    actions: { selectWidget, moveWidget, deleteSelectedWidgets, updateWidgetProperty },
+    actions: { selectWidget, moveWidget, deleteSelectedWidgets, updateWidgetProperty, setSelection },
   } = useEditorBackend();
   const activeScreen = getActiveScreenFromProject(project);
   const rootTree = buildWidgetTree(project, activeScreen.rootNodeId);
@@ -63,6 +74,7 @@ export function HierarchyPanel() {
   });
   const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ widgetId: string; position: DropPosition } | null>(null);
+  const rangeAnchorRef = useRef<string | null>(null);
 
   const clearDragPreview = () => {
     setDraggingWidgetId(null);
@@ -116,7 +128,30 @@ export function HierarchyPanel() {
           }`}
           tabIndex={0}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
-          onClick={(event) => selectWidget(widget.id, event.metaKey || event.ctrlKey || event.shiftKey)}
+          onClick={(event) => {
+            const isCtrl = event.metaKey || event.ctrlKey;
+            const isShift = event.shiftKey;
+
+            if (isShift && rootTree) {
+              const visibleIds = collectVisibleIds(rootTree, expandedIds);
+              const anchorId = rangeAnchorRef.current ?? widget.id;
+              const anchorIdx = visibleIds.indexOf(anchorId);
+              const currentIdx = visibleIds.indexOf(widget.id);
+              const start = anchorIdx < 0 ? currentIdx : Math.min(anchorIdx, currentIdx);
+              const end = anchorIdx < 0 ? currentIdx : Math.max(anchorIdx, currentIdx);
+              const rangeIds = visibleIds.slice(start, end + 1);
+              const nextSelection = isCtrl
+                ? [...new Set([...selectedWidgetIds, ...rangeIds])]
+                : rangeIds;
+              setSelection(nextSelection);
+            } else if (isCtrl) {
+              selectWidget(widget.id, true);
+              rangeAnchorRef.current = widget.id;
+            } else {
+              selectWidget(widget.id, false);
+              rangeAnchorRef.current = widget.id;
+            }
+          }}
           onKeyDown={(event) => {
             if (event.key !== "Delete" && event.key !== "Backspace") {
               return;

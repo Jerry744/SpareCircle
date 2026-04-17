@@ -1,17 +1,20 @@
 import {
+  type AlignmentOperation,
+  type CanvasSnapSettings,
   type ColorFormat,
   type EditorAction,
   type EditorState,
   type Point,
+  DEFAULT_CANVAS_SNAP,
 } from "../types";
-import { applyInteraction } from "../interaction";
+import { applyAlignmentOperation, applyInteraction } from "../interaction";
 import { cloneProject } from "../tree";
 import { commitProjectChange, pruneDanglingEventBindings } from "./helpers";
 import { handleCreateScreen, handleRenameScreen, handleDuplicateScreen, handleDeleteScreen, handleUpdateScreenMeta } from "./screenReducer";
-import { handleAddWidget, handleDeleteSelectedWidgets, handleMoveWidget, handleUpdateWidgetProperty, handleClearWidgetProperty, handleSetWidgetOptions, handleSetWidgetSelectedOption } from "./widgetReducer";
+import { handleAddWidget, handleDeleteSelectedWidgets, handleMoveWidget, handleUpdateWidgetProperty, handleClearWidgetProperty, handleSetWidgetOptions, handleSetWidgetSelectedOption, handleBatchUpdateWidgetProperty } from "./widgetReducer";
 import { handleCreateStyleToken, handleUpdateStyleToken, handleDeleteStyleToken, handleAssignWidgetStyleToken } from "./tokenReducer";
 import { handleImportAssets, handleDeleteAsset, handleAssignWidgetAsset } from "./assetReducer";
-import { handleUpsertWidgetEventBinding, handleRemoveWidgetEventBinding } from "./eventReducer";
+import { handleUpsertWidgetEventBinding, handleRemoveWidgetEventBinding, handleBatchUpsertWidgetEventBinding, handleBatchRemoveWidgetEventBinding } from "./eventReducer";
 
 const VALID_COLOR_FORMATS: ColorFormat[] = ["monochrome", "grayscale8", "rgb565", "rgb888", "argb8888"];
 
@@ -33,6 +36,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
     case "clearSelection":
       return { ...state, selectedWidgetIds: [] };
+    case "setSelection": {
+      const widgetIds = action.widgetIds as string[];
+      return { ...state, selectedWidgetIds: Array.isArray(widgetIds) ? widgetIds : [] };
+    }
     case "setActiveScreen": {
       const screenId = action.screenId as string;
       if (!state.project.screens.some((screen) => screen.id === screenId)) return state;
@@ -105,8 +112,20 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "assignWidgetAsset": return handleAssignWidgetAsset(state, action);
 
     // --- Events ---
-    case "upsertWidgetEventBinding":  return handleUpsertWidgetEventBinding(state, action);
-    case "removeWidgetEventBinding":  return handleRemoveWidgetEventBinding(state, action);
+    case "upsertWidgetEventBinding":       return handleUpsertWidgetEventBinding(state, action);
+    case "removeWidgetEventBinding":       return handleRemoveWidgetEventBinding(state, action);
+    case "batchUpsertWidgetEventBinding":  return handleBatchUpsertWidgetEventBinding(state, action);
+    case "batchRemoveWidgetEventBinding":  return handleBatchRemoveWidgetEventBinding(state, action);
+
+    // --- Batch ---
+    case "batchUpdateWidgetProperty": return handleBatchUpdateWidgetProperty(state, action);
+    case "applyAlignmentOperation": {
+      if (state.interaction) return state;
+      const widgetIds = Array.isArray(action.widgetIds) ? (action.widgetIds as string[]) : [];
+      const operation = action.operation as AlignmentOperation;
+      const nextProject = applyAlignmentOperation(state.project, widgetIds, operation);
+      return commitProjectChange(state, nextProject, state.selectedWidgetIds);
+    }
 
     // --- Project / History ---
     case "hydrateProject": {
@@ -152,6 +171,16 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const format = action.format as ColorFormat;
       if (!VALID_COLOR_FORMATS.includes(format)) return state;
       return commitProjectChange(state, { ...state.project, colorFormat: format });
+    }
+    case "setCanvasSnapSettings": {
+      const updates = action.settings as Partial<CanvasSnapSettings>;
+      const current = state.project.canvasSnap ?? { ...DEFAULT_CANVAS_SNAP };
+      const next: CanvasSnapSettings = {
+        pixelSnapEnabled: typeof updates.pixelSnapEnabled === "boolean" ? updates.pixelSnapEnabled : current.pixelSnapEnabled,
+        magnetSnapEnabled: typeof updates.magnetSnapEnabled === "boolean" ? updates.magnetSnapEnabled : current.magnetSnapEnabled,
+        snapThresholdPx: typeof updates.snapThresholdPx === "number" ? updates.snapThresholdPx : current.snapThresholdPx,
+      };
+      return commitProjectChange(state, { ...state.project, canvasSnap: next });
     }
 
     default:

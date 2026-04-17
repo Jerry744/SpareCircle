@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { editorReducer } from "../reducer";
 import { createInitialProject } from "../validation";
-import type { EditorState } from "../types";
+import type { AlignmentOperation, EditorState, WidgetNode } from "../types";
 
 function createState(): EditorState {
   return {
@@ -13,6 +13,59 @@ function createState(): EditorState {
     },
     interaction: null,
   };
+}
+
+function createWidget(overrides: Partial<WidgetNode> & Pick<WidgetNode, "id" | "name">): WidgetNode {
+  return {
+    id: overrides.id,
+    name: overrides.name,
+    type: "Label",
+    parentId: "Panel1",
+    childrenIds: [],
+    x: 0,
+    y: 0,
+    width: 20,
+    height: 20,
+    text: overrides.name,
+    ...overrides,
+  };
+}
+
+function createAlignmentState(): EditorState {
+  const project = createInitialProject();
+  const widgetsById = {
+    ...project.widgetsById,
+    alignA: createWidget({ id: "alignA", name: "Align A", x: 10, y: 20, width: 50, height: 20 }),
+    alignB: createWidget({ id: "alignB", name: "Align B", x: 70, y: 40, width: 30, height: 40 }),
+    alignC: createWidget({ id: "alignC", name: "Align C", x: 130, y: 10, width: 20, height: 30 }),
+    alignD: createWidget({ id: "alignD", name: "Align D", x: 0, y: 120, width: 20, height: 20 }),
+  };
+
+  widgetsById.Panel1 = {
+    ...widgetsById.Panel1,
+    childrenIds: [...widgetsById.Panel1.childrenIds, "alignA", "alignB", "alignC", "alignD"],
+  };
+
+  return {
+    project: {
+      ...project,
+      widgetsById,
+    },
+    selectedWidgetIds: ["alignA", "alignB", "alignC"],
+    history: {
+      past: [],
+      future: [],
+    },
+    interaction: null,
+  };
+}
+
+function reduceAlignment(state: EditorState, operation: AlignmentOperation, widgetIds = state.selectedWidgetIds): EditorState {
+  return editorReducer(state, {
+    type: "applyAlignmentOperation",
+    operation,
+    widgetIds,
+  });
 }
 
 describe("editorReducer screen lifecycle", () => {
@@ -517,5 +570,336 @@ describe("editorReducer screen lifecycle", () => {
     });
 
     expect(deletedScreen.project.widgetsById.Button1.eventBindings?.clicked).toBeUndefined();
+  });
+});
+
+describe("editorReducer alignment operations", () => {
+  it("aligns widgets to the left edge of the selection bounds", () => {
+    const next = reduceAlignment(createAlignmentState(), "align_left");
+
+    expect(next.project.widgetsById.alignA.x).toBe(10);
+    expect(next.project.widgetsById.alignB.x).toBe(10);
+    expect(next.project.widgetsById.alignC.x).toBe(10);
+  });
+
+  it("aligns widgets to the right edge of the selection bounds", () => {
+    const next = reduceAlignment(createAlignmentState(), "align_right");
+
+    expect(next.project.widgetsById.alignA.x).toBe(100);
+    expect(next.project.widgetsById.alignB.x).toBe(120);
+    expect(next.project.widgetsById.alignC.x).toBe(130);
+  });
+
+  it("aligns widgets to the top edge of the selection bounds", () => {
+    const next = reduceAlignment(createAlignmentState(), "align_top");
+
+    expect(next.project.widgetsById.alignA.y).toBe(10);
+    expect(next.project.widgetsById.alignB.y).toBe(10);
+    expect(next.project.widgetsById.alignC.y).toBe(10);
+  });
+
+  it("aligns widgets to the bottom edge of the selection bounds", () => {
+    const next = reduceAlignment(createAlignmentState(), "align_bottom");
+
+    expect(next.project.widgetsById.alignA.y).toBe(60);
+    expect(next.project.widgetsById.alignB.y).toBe(40);
+    expect(next.project.widgetsById.alignC.y).toBe(50);
+  });
+
+  it("aligns widgets to the horizontal center of the selection bounds", () => {
+    const next = reduceAlignment(createAlignmentState(), "align_h_center");
+
+    expect(next.project.widgetsById.alignA.x).toBe(55);
+    expect(next.project.widgetsById.alignB.x).toBe(65);
+    expect(next.project.widgetsById.alignC.x).toBe(70);
+  });
+
+  it("aligns widgets to the vertical center of the selection bounds", () => {
+    const next = reduceAlignment(createAlignmentState(), "align_v_center");
+
+    expect(next.project.widgetsById.alignA.y).toBe(35);
+    expect(next.project.widgetsById.alignB.y).toBe(25);
+    expect(next.project.widgetsById.alignC.y).toBe(30);
+  });
+
+  it("distributes widgets horizontally while keeping endpoints fixed", () => {
+    const state = createAlignmentState();
+    const adjusted = {
+      ...state,
+      selectedWidgetIds: ["alignD", "alignA", "alignB", "alignC"],
+      project: {
+        ...state.project,
+        widgetsById: {
+          ...state.project.widgetsById,
+          alignD: { ...state.project.widgetsById.alignD, x: 0, y: 0, width: 20, height: 20 },
+          alignA: { ...state.project.widgetsById.alignA, x: 35, y: 0, width: 20, height: 20 },
+          alignB: { ...state.project.widgetsById.alignB, x: 90, y: 0, width: 20, height: 20 },
+          alignC: { ...state.project.widgetsById.alignC, x: 120, y: 0, width: 20, height: 20 },
+        },
+      },
+    };
+
+    const next = reduceAlignment(adjusted, "distribute_h");
+
+    expect(next.project.widgetsById.alignD.x).toBe(0);
+    expect(next.project.widgetsById.alignA.x).toBe(40);
+    expect(next.project.widgetsById.alignB.x).toBe(80);
+    expect(next.project.widgetsById.alignC.x).toBe(120);
+  });
+
+  it("keeps horizontal distribution stable across repeated operations", () => {
+    const state = createAlignmentState();
+    const adjusted = {
+      ...state,
+      selectedWidgetIds: ["alignD", "alignA", "alignB", "alignC"],
+      project: {
+        ...state.project,
+        widgetsById: {
+          ...state.project.widgetsById,
+          alignD: { ...state.project.widgetsById.alignD, x: 0, y: 0, width: 20, height: 20 },
+          alignA: { ...state.project.widgetsById.alignA, x: 35, y: 0, width: 20, height: 20 },
+          alignB: { ...state.project.widgetsById.alignB, x: 90, y: 0, width: 20, height: 20 },
+          alignC: { ...state.project.widgetsById.alignC, x: 120, y: 0, width: 20, height: 20 },
+        },
+      },
+    };
+
+    const once = reduceAlignment(adjusted, "distribute_h");
+    const twice = reduceAlignment(once, "distribute_h");
+
+    expect(twice.project.widgetsById.alignD.x).toBe(0);
+    expect(twice.project.widgetsById.alignA.x).toBe(40);
+    expect(twice.project.widgetsById.alignB.x).toBe(80);
+    expect(twice.project.widgetsById.alignC.x).toBe(120);
+  });
+
+  it("distributes widgets vertically while keeping endpoints fixed", () => {
+    const state = createAlignmentState();
+    const adjusted = {
+      ...state,
+      selectedWidgetIds: ["alignD", "alignA", "alignB", "alignC"],
+      project: {
+        ...state.project,
+        widgetsById: {
+          ...state.project.widgetsById,
+          alignD: { ...state.project.widgetsById.alignD, x: 0, y: 0, width: 20, height: 20 },
+          alignA: { ...state.project.widgetsById.alignA, x: 0, y: 35, width: 20, height: 20 },
+          alignB: { ...state.project.widgetsById.alignB, x: 0, y: 90, width: 20, height: 20 },
+          alignC: { ...state.project.widgetsById.alignC, x: 0, y: 120, width: 20, height: 20 },
+        },
+      },
+    };
+
+    const next = reduceAlignment(adjusted, "distribute_v");
+
+    expect(next.project.widgetsById.alignD.y).toBe(0);
+    expect(next.project.widgetsById.alignA.y).toBe(40);
+    expect(next.project.widgetsById.alignB.y).toBe(80);
+    expect(next.project.widgetsById.alignC.y).toBe(120);
+  });
+
+  it("does not distribute when fewer than three widgets are selected", () => {
+    const state = {
+      ...createAlignmentState(),
+      selectedWidgetIds: ["alignA", "alignB"],
+    };
+
+    const next = reduceAlignment(state, "distribute_h");
+
+    expect(next).toBe(state);
+  });
+
+  it("writes alignment changes to history and supports undo/redo", () => {
+    const aligned = reduceAlignment(createAlignmentState(), "align_left");
+
+    expect(aligned.history.past).toHaveLength(1);
+    expect(aligned.project.widgetsById.alignB.x).toBe(10);
+
+    const undone = editorReducer(aligned, { type: "undo" });
+    expect(undone.project.widgetsById.alignB.x).toBe(70);
+
+    const redone = editorReducer(undone, { type: "redo" });
+    expect(redone.project.widgetsById.alignB.x).toBe(10);
+  });
+
+  it("distributes across different parents using absolute coordinates", () => {
+    const state = createAlignmentState();
+    const crossParentState: EditorState = {
+      ...state,
+      selectedWidgetIds: ["alignD", "TempLabel", "Button1"],
+      project: {
+        ...state.project,
+        widgetsById: {
+          ...state.project.widgetsById,
+          alignD: { ...state.project.widgetsById.alignD, parentId: "Container1", x: 0, y: 0, width: 20, height: 20 },
+          Container1: {
+            ...state.project.widgetsById.Container1,
+            childrenIds: [...state.project.widgetsById.Container1.childrenIds, "alignD"],
+          },
+          TempLabel: { ...state.project.widgetsById.TempLabel, x: 36, y: 34, width: 20, height: 20 },
+          Button1: { ...state.project.widgetsById.Button1, x: 250, y: 88, width: 20, height: 20 },
+        },
+      },
+    };
+
+    const next = reduceAlignment(crossParentState, "distribute_h");
+
+    const alignDAbsX = 24 + next.project.widgetsById.alignD.x;
+    const tempAbsX = 24 + 20 + next.project.widgetsById.TempLabel.x;
+    const buttonAbsX = 24 + 20 + next.project.widgetsById.Button1.x;
+
+    expect(alignDAbsX).toBe(24);
+    expect(tempAbsX).toBe(159);
+    expect(buttonAbsX).toBe(294);
+  });
+
+  it("ignores nested descendants when parent and child are selected together", () => {
+    const state = createAlignmentState();
+    const next = reduceAlignment(
+      {
+        ...state,
+        selectedWidgetIds: ["Panel1", "Button1", "TempLabel"],
+      },
+      "align_left",
+    );
+
+    expect(next.project.widgetsById.Panel1.x).toBe(20);
+    expect(next.project.widgetsById.Button1.x).toBe(250);
+    expect(next.project.widgetsById.TempLabel.x).toBe(36);
+  });
+});
+
+describe("batch multi-select operations", () => {
+  it("batchUpdateWidgetProperty updates eligible widgets in one history step", () => {
+    let state = createState();
+    // Add a second button
+    state = editorReducer(state, { type: "addWidget", parentId: "Panel1", widgetType: "Button", x: 10, y: 10 });
+    const btn2Id = state.selectedWidgetIds[0];
+
+    const before = state.history.past.length;
+    const next = editorReducer(state, {
+      type: "batchUpdateWidgetProperty",
+      widgetIds: ["Button1", btn2Id],
+      propertyName: "fill",
+      value: "#ff0000",
+    });
+
+    expect(next.project.widgetsById.Button1.fill).toBe("#ff0000");
+    expect(next.project.widgetsById[btn2Id].fill).toBe("#ff0000");
+    // Exactly one history entry added
+    expect(next.history.past.length).toBe(before + 1);
+  });
+
+  it("batchUpdateWidgetProperty skips widgets that don't support the property", () => {
+    let state = createState();
+    state = editorReducer(state, { type: "addWidget", parentId: "Panel1", widgetType: "Image", x: 10, y: 10 });
+    const imageId = state.selectedWidgetIds[0];
+
+    // Image does not support textColor
+    const next = editorReducer(state, {
+      type: "batchUpdateWidgetProperty",
+      widgetIds: ["Button1", imageId],
+      propertyName: "textColor",
+      value: "#00ff00",
+    });
+
+    expect(next.project.widgetsById.Button1.textColor).toBe("#00ff00");
+    expect(next.project.widgetsById[imageId].textColor).toBeUndefined();
+  });
+
+  it("batchUpdateWidgetProperty with empty widgetIds returns state unchanged", () => {
+    const state = createState();
+    const next = editorReducer(state, {
+      type: "batchUpdateWidgetProperty",
+      widgetIds: [],
+      propertyName: "fill",
+      value: "#ff0000",
+    });
+    expect(next).toBe(state);
+  });
+
+  it("batchUpsertWidgetEventBinding applies to all widgets in one history step", () => {
+    let state = createState();
+    state = editorReducer(state, { type: "addWidget", parentId: "Panel1", widgetType: "Button", x: 0, y: 0 });
+    const btn2Id = state.selectedWidgetIds[0];
+
+    const before = state.history.past.length;
+    const binding = { event: "clicked" as const, action: { type: "switch_screen" as const, targetScreenId: "screen-1" } };
+    const next = editorReducer(state, {
+      type: "batchUpsertWidgetEventBinding",
+      widgetIds: ["Button1", btn2Id],
+      binding,
+    });
+
+    expect(next.project.widgetsById.Button1.eventBindings?.clicked?.action.type).toBe("switch_screen");
+    expect(next.project.widgetsById[btn2Id].eventBindings?.clicked?.action.type).toBe("switch_screen");
+    expect(next.history.past.length).toBe(before + 1);
+  });
+
+  it("batchRemoveWidgetEventBinding removes from all widgets in one history step", () => {
+    let state = createState();
+    state = editorReducer(state, { type: "addWidget", parentId: "Panel1", widgetType: "Button", x: 0, y: 0 });
+    const btn2Id = state.selectedWidgetIds[0];
+
+    const binding = { event: "clicked" as const, action: { type: "switch_screen" as const, targetScreenId: "screen-1" } };
+    state = editorReducer(state, { type: "batchUpsertWidgetEventBinding", widgetIds: ["Button1", btn2Id], binding });
+
+    const before = state.history.past.length;
+    const next = editorReducer(state, {
+      type: "batchRemoveWidgetEventBinding",
+      widgetIds: ["Button1", btn2Id],
+      event: "clicked",
+    });
+
+    expect(next.project.widgetsById.Button1.eventBindings?.clicked).toBeUndefined();
+    expect(next.project.widgetsById[btn2Id].eventBindings?.clicked).toBeUndefined();
+    expect(next.history.past.length).toBe(before + 1);
+  });
+
+  it("setSelection replaces selectedWidgetIds without creating history", () => {
+    const state = createState();
+    const before = state.history.past.length;
+    const next = editorReducer(state, { type: "setSelection", widgetIds: ["Button1", "Panel1"] });
+    expect(next.selectedWidgetIds).toEqual(["Button1", "Panel1"]);
+    expect(next.history.past.length).toBe(before);
+  });
+});
+
+describe("canvas snap settings", () => {
+  it("setCanvasSnapSettings updates pixelSnapEnabled and writes to history", () => {
+    const state = createState();
+    const before = state.history.past.length;
+    const next = editorReducer(state, { type: "setCanvasSnapSettings", settings: { pixelSnapEnabled: true } });
+    expect(next.project.canvasSnap?.pixelSnapEnabled).toBe(true);
+    expect(next.project.canvasSnap?.magnetSnapEnabled).toBe(state.project.canvasSnap?.magnetSnapEnabled);
+    expect(next.history.past.length).toBe(before + 1);
+  });
+
+  it("setCanvasSnapSettings updates magnetSnapEnabled and writes to history", () => {
+    const state = createState();
+    const before = state.history.past.length;
+    const next = editorReducer(state, { type: "setCanvasSnapSettings", settings: { magnetSnapEnabled: false } });
+    expect(next.project.canvasSnap?.magnetSnapEnabled).toBe(false);
+    expect(next.history.past.length).toBe(before + 1);
+  });
+
+  it("setCanvasSnapSettings allows undo/redo", () => {
+    const state = createState();
+    const toggled = editorReducer(state, { type: "setCanvasSnapSettings", settings: { pixelSnapEnabled: true } });
+    expect(toggled.project.canvasSnap?.pixelSnapEnabled).toBe(true);
+
+    const undone = editorReducer(toggled, { type: "undo" });
+    expect(undone.project.canvasSnap?.pixelSnapEnabled).toBe(false);
+
+    const redone = editorReducer(undone, { type: "redo" });
+    expect(redone.project.canvasSnap?.pixelSnapEnabled).toBe(true);
+  });
+
+  it("setCanvasSnapSettings preserves unset fields from current snap state", () => {
+    const state = createState();
+    const next = editorReducer(state, { type: "setCanvasSnapSettings", settings: { snapThresholdPx: 10 } });
+    expect(next.project.canvasSnap?.snapThresholdPx).toBe(10);
+    expect(next.project.canvasSnap?.pixelSnapEnabled).toBe(state.project.canvasSnap?.pixelSnapEnabled);
+    expect(next.project.canvasSnap?.magnetSnapEnabled).toBe(state.project.canvasSnap?.magnetSnapEnabled);
   });
 });
