@@ -37,6 +37,7 @@ export function parseNormalizedWidget(
   const maybeTextColorTokenId = input.textColorTokenId;
   const maybeRadius = input.radius;
   const maybeAssetId = input.assetId;
+  const maybeImageFit = input.imageFit;
   const maybeOptions = input.options;
   const maybeSelectedOptionIndex = input.selectedOptionIndex;
   const maybeValue = input.value;
@@ -52,6 +53,7 @@ export function parseNormalizedWidget(
   if (maybeTextColorTokenId !== undefined && typeof maybeTextColorTokenId !== "string") return { ok: false, error: `${path}.textColorTokenId must be a string when provided` };
   if (maybeRadius !== undefined && (typeof maybeRadius !== "number" || !Number.isFinite(maybeRadius))) return { ok: false, error: `${path}.radius must be a finite number when provided` };
   if (maybeAssetId !== undefined && !isValidAssetId(maybeAssetId)) return { ok: false, error: `${path}.assetId must match asset id format when provided` };
+  if (maybeImageFit !== undefined && maybeImageFit !== "stretch") return { ok: false, error: `${path}.imageFit must be "stretch" when provided` };
   if (maybeOptions !== undefined && (!Array.isArray(maybeOptions) || (maybeOptions as unknown[]).some((o) => typeof o !== "string"))) return { ok: false, error: `${path}.options must be a string array when provided` };
   if (maybeSelectedOptionIndex !== undefined && (typeof maybeSelectedOptionIndex !== "number" || !Number.isFinite(maybeSelectedOptionIndex) || maybeSelectedOptionIndex < 0)) return { ok: false, error: `${path}.selectedOptionIndex must be a non-negative number when provided` };
   if (maybeValue !== undefined && (typeof maybeValue !== "number" || !Number.isFinite(maybeValue) || maybeValue < 0 || maybeValue > 100)) return { ok: false, error: `${path}.value must be a number between 0 and 100 when provided` };
@@ -81,6 +83,7 @@ export function parseNormalizedWidget(
       textColorTokenId: maybeTextColorTokenId,
       radius: maybeRadius,
       assetId: maybeAssetId,
+      imageFit: maybeImageFit as "stretch" | undefined,
       options: maybeOptions as string[] | undefined,
       selectedOptionIndex: maybeSelectedOptionIndex as number | undefined,
       value: maybeValue as number | undefined,

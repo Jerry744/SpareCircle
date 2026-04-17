@@ -60,6 +60,7 @@ export interface WidgetNode {
   textColorTokenId?: string;
   radius?: number;
   assetId?: string;
+  imageFit?: "stretch";
   options?: string[];
   selectedOptionIndex?: number;
   value?: number;

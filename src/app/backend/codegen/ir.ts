@@ -17,6 +17,7 @@ export interface LvglWidgetIR {
   textColorExpression?: string;
   assetSymbol?: string;
   assetMacro?: string;
+  imageFit?: "stretch";
   options?: string[];
   selectedOptionIndex?: number;
   value?: number;
@@ -32,6 +33,11 @@ export interface LvglAssetIR {
   symbolName: string;
   macroName: string;
   dataUrl: string;
+  /** Target render dimensions from the first widget that references this asset.
+   *  When set, imageEncoder will resize the encoded pixel data to these dimensions,
+   *  ensuring the LVGL output matches the canvas preview (stretch to fill). */
+  targetWidth?: number;
+  targetHeight?: number;
 }
 
 export interface LvglScreenIR {
@@ -183,10 +189,25 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
   const usedNames = new Set<string>();
   const usedMacroNames = new Set<string>();
   const usedAssetSymbols = new Set<string>();
+
+  // Collect target render dimensions per asset from Image widget references.
+  // First occurrence wins; this ensures the exported C pixel array is pre-resized
+  // to match the canvas preview (stretch-to-fill behaviour).
+  const assetTargetDims = new Map<string, { width: number; height: number }>();
+  for (const node of Object.values(project.widgetsById)) {
+    if (node.type === "Image" && node.assetId && !assetTargetDims.has(node.assetId)) {
+      assetTargetDims.set(node.assetId, {
+        width: Math.max(1, clampInt(node.width, 80)),
+        height: Math.max(1, clampInt(node.height, 40)),
+      });
+    }
+  }
+
   const assets: LvglAssetIR[] = Object.values(project.assets).map((asset) => {
     const base = `asset_${sanitizeToken(asset.name.replace(/\.[^.]+$/, ""))}`;
     const symbolName = createDeterministicName(base, usedAssetSymbols);
     const macroName = createMacroName(`UI_ASSET_${asset.name.replace(/\.[^.]+$/, "")}`, usedMacroNames);
+    const dims = assetTargetDims.get(asset.id);
     return {
       id: asset.id,
       name: asset.name,
@@ -194,6 +215,8 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
       symbolName,
       macroName,
       dataUrl: asset.dataUrl,
+      targetWidth: dims?.width,
+      targetHeight: dims?.height,
     };
   });
   const assetById = new Map(assets.map((asset) => [asset.id, asset]));
@@ -257,6 +280,7 @@ export function projectToLvglIR(project: ProjectSnapshot): LvglProjectIR {
             textColorExpression,
             assetSymbol: child.type === "Image" && child.assetId ? assetById.get(child.assetId)?.symbolName : undefined,
             assetMacro: child.type === "Image" && child.assetId ? assetById.get(child.assetId)?.macroName : undefined,
+            imageFit: child.type === "Image" ? (child.imageFit ?? "stretch") : undefined,
             value: child.value,
             checked: child.checked,
             visible: child.visible !== false,

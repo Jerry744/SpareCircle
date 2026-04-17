@@ -145,24 +145,24 @@ function AssetsPanel() {
           No assets yet. Import image files here to use them in Image widgets.
         </div>
       ) : null}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-6 gap-1.5">
         {assets.map((asset) => (
           <div
             key={asset.id}
-            className="p-3 bg-[#252525] hover:bg-[#3c3c3c] rounded transition-colors border border-transparent hover:border-[#5b9dd9]/30"
+            className="group relative p-1.5 bg-[#252525] hover:bg-[#3c3c3c] rounded transition-colors border border-transparent hover:border-[#5b9dd9]/30"
+            title={`${asset.name} • ${formatBytes(estimateAssetSize(asset.dataUrl))}`}
           >
-            <div className="w-full aspect-square bg-[#1e1e1e] rounded flex items-center justify-center mb-2">
-              <img src={asset.dataUrl} alt={asset.name} className="max-w-full max-h-full object-contain rounded" />
+            <div className="w-full aspect-square bg-[#1e1e1e] rounded flex items-center justify-center overflow-hidden">
+              <img src={asset.dataUrl} alt={asset.name} className="max-w-full max-h-full object-contain" />
             </div>
-            <div className="text-xs truncate text-gray-300">{asset.name}</div>
-            <div className="text-[10px] text-gray-500">{asset.mimeType} • {formatBytes(estimateAssetSize(asset.dataUrl))}</div>
+            <div className="mt-1 text-[10px] truncate text-gray-400 leading-tight">{asset.name}</div>
             <button
               type="button"
               onClick={() => deleteAsset(asset.id)}
-              className="mt-2 px-2 py-1 text-[10px] rounded border border-[#4a2c2c] text-rose-300 hover:bg-[#3a2323] flex items-center gap-1"
+              className="absolute top-1 right-1 p-0.5 rounded bg-[#1e1e1e]/80 text-gray-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Delete asset"
             >
               <Trash2 size={10} />
-              Delete
             </button>
           </div>
         ))}

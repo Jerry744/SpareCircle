@@ -1,20 +1,11 @@
 import JSZip from "jszip";
-import type { ColorFormat, ProjectSnapshot } from "../types";
+import type { ProjectSnapshot } from "../types";
 import { hexToColorExpression, projectToLvglIR, type LvglProjectIR } from "./ir";
 import { emitWidget } from "./emitters";
+import { generateAssetCSource } from "./imageEncoder";
 
 function sanitizeScreenComment(name: string): string {
   return name.replace(/[\r\n]+/g, " ").trim() || "Screen";
-}
-
-function colorDepthValue(format: ColorFormat): number {
-  switch (format) {
-    case "monochrome": return 1;
-    case "grayscale8": return 8;
-    case "rgb565": return 16;
-    case "rgb888": return 24;
-    case "argb8888": return 32;
-  }
 }
 
 function assetExtensionFromMimeType(mimeType: string): string {
@@ -47,25 +38,47 @@ function decodeDataUrl(dataUrl: string): Uint8Array {
 }
 
 export function generateAssetManifestSource(ir: LvglProjectIR): string {
+  if (ir.assets.length === 0) {
+    return [
+      `/* SpareCircle — no image assets in this project. */`,
+      ``,
+    ].join("\n");
+  }
+
   const lines: string[] = [
-    "#include \"lvgl.h\"",
-    "#include \"ui.h\"",
-    "",
+    `/* SpareCircle — asset index`,
+    ` *`,
+    ` * Each image is exported as a separate C translation unit below.`,
+    ` * Add every assets/*.c file listed here to your build system.`,
+    ` *`,
   ];
 
-  if (ir.assets.length === 0) {
-    lines.push("// No image assets were exported.");
-    lines.push("");
-    return lines.join("\n");
+  for (const asset of ir.assets) {
+    lines.push(` *   assets/${asset.symbolName}.c  —  ${asset.name}`);
   }
 
-  for (const asset of ir.assets) {
-    lines.push(`// ${asset.name} (${asset.mimeType})`);
-    lines.push(`const lv_image_dsc_t ${asset.symbolName} = {0};`);
-    lines.push("");
-  }
+  lines.push(` */`);
+  lines.push(``);
 
   return lines.join("\n");
+}
+
+export function generateUiPortHeader(): string {
+  return [
+    "/* SpareCircle — port header",
+    " *",
+    " * Edit this file to point to the correct LVGL header for your platform.",
+    " * For ESP-IDF / bare-metal:  #include \"lvgl.h\"",
+    " * For Arduino (library):     #include <lvgl.h>",
+    " */",
+    "#ifndef UI_PORT_H",
+    "#define UI_PORT_H",
+    "",
+    "#include \"lvgl.h\"",
+    "",
+    "#endif /* UI_PORT_H */",
+    "",
+  ].join("\n");
 }
 
 export function generateUiHeader(ir: LvglProjectIR): string {
@@ -77,10 +90,7 @@ export function generateUiHeader(ir: LvglProjectIR): string {
     "extern \"C\" {",
     "#endif",
     "",
-    `/* Color depth: ${colorDepthValue(ir.colorFormat)}-bit (${ir.colorFormat}) */`,
-    `#define LV_COLOR_DEPTH ${colorDepthValue(ir.colorFormat)}`,
-    "",
-    "#include \"lvgl.h\"",
+    "#include \"ui_port.h\"",
     "",
   ];
 
@@ -305,6 +315,7 @@ export function generateLvglFiles(project: ProjectSnapshot): Record<string, stri
   const ir = projectToLvglIR(project);
 
   return {
+    "ui_port.h": generateUiPortHeader(),
     "ui.h": generateUiHeader(ir),
     "ui.c": generateUiSource(ir),
     "ui_events.c": generateUiEventsSource(ir),
@@ -313,13 +324,36 @@ export function generateLvglFiles(project: ProjectSnapshot): Record<string, stri
 }
 
 export async function generateLvglZip(project: ProjectSnapshot): Promise<Blob> {
-  const files = generateLvglFiles(project);
+  const ir = projectToLvglIR(project);
+
+  const textFiles: Record<string, string> = {
+    "ui_port.h":         generateUiPortHeader(),
+    "ui.h":             generateUiHeader(ir),
+    "ui.c":             generateUiSource(ir),
+    "ui_events.c":      generateUiEventsSource(ir),
+    "assets/manifest.c": generateAssetManifestSource(ir),
+  };
+
+  // Encode each unique asset to a self-contained C file (deduplicated via IR)
+  const assetCFiles = await Promise.all(
+    ir.assets.map(async (asset) => ({
+      filename: `assets/${asset.symbolName}.c`,
+      content:  await generateAssetCSource(asset, ir.colorFormat),
+    })),
+  );
+
   const zip = new JSZip();
 
-  for (const [filename, content] of Object.entries(files)) {
+  for (const [filename, content] of Object.entries(textFiles)) {
     zip.file(filename, content);
   }
 
+  for (const { filename, content } of assetCFiles) {
+    zip.file(filename, content);
+  }
+
+  // Also include the original binary images as a reference / for tools that
+  // prefer to re-convert using a different colour depth.
   for (const asset of Object.values(project.assets)) {
     const extension = assetExtensionFromMimeType(asset.mimeType);
     const fileStem = asset.name.replace(/\.[^.]+$/, "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_") || "asset";

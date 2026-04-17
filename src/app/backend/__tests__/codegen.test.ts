@@ -3,6 +3,7 @@ import JSZip from "jszip";
 import { createInitialProject } from "../validation";
 import { generateLvglFiles, generateLvglZip } from "../codegen/generator";
 import { projectToLvglIR } from "../codegen/ir";
+import { generateAssetCSource } from "../codegen/imageEncoder";
 
 describe("Demo5 LVGL codegen", () => {
   it("generates deterministic IR for same project", () => {
@@ -45,6 +46,15 @@ describe("Demo5 LVGL codegen", () => {
     expect(files["ui.c"]).toContain("lv_screen_load(");
     expect(files["ui.h"]).toContain("#define UI_ASSET_LOGO");
     expect(files["assets/manifest.c"]).toContain("logo.gif");
+    expect(files["assets/manifest.c"]).toContain("asset_logo.c");
+
+    // ui.h must not hardcode LV_COLOR_DEPTH or include lvgl.h directly
+    expect(files["ui.h"]).not.toContain("LV_COLOR_DEPTH");
+    expect(files["ui.h"]).not.toContain('#include "lvgl.h"');
+    expect(files["ui.h"]).toContain('#include "ui_port.h"');
+
+    // lv_image_set_size_mode must not appear in default output
+    expect(files["ui.c"]).not.toContain("lv_image_set_size_mode(");
 
     expect(files["ui.c"]).not.toContain("lv_btn_create(");
     expect(files["ui.c"]).not.toContain("lv_img_create(");
@@ -62,7 +72,17 @@ describe("Demo5 LVGL codegen", () => {
     const blob = await generateLvglZip(project);
     const zip = await JSZip.loadAsync(blob);
 
-    expect(Object.keys(zip.files)).toEqual(expect.arrayContaining(["ui.h", "ui.c", "ui_events.c", "assets/manifest.c", "assets/demo.gif"]));
+    expect(Object.keys(zip.files)).toEqual(
+      expect.arrayContaining([
+        "ui_port.h",
+        "ui.h",
+        "ui.c",
+        "ui_events.c",
+        "assets/manifest.c",
+        "assets/demo.gif",
+        "assets/asset_demo.c",  // generated C pixel array
+      ]),
+    );
   });
 
   it("emits token macros and references them in generated C", () => {
@@ -270,5 +290,82 @@ describe("Demo5 LVGL codegen", () => {
     expect(files["ui_events.c"]).toContain(`.target_widget = &${targetWidget?.cName},`);
     expect(files["ui_events.c"]).not.toContain(".target_widget = &TempLabel,");
     expect(files["ui.c"]).toContain("ui_events_init();");
+  });
+
+  it("emits explicit pos/size for non-square image widget and omits lv_image_set_size_mode", () => {
+    const project = createInitialProject();
+    project.assets["asset-banner"] = {
+      id: "asset-banner",
+      name: "banner.png",
+      mimeType: "image/png",
+      dataUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+    };
+    project.widgetsById.Panel1.childrenIds.push("Banner1");
+    project.widgetsById.Banner1 = {
+      id: "Banner1",
+      name: "Banner1",
+      type: "Image",
+      parentId: "Panel1",
+      childrenIds: [],
+      x: 10,
+      y: 20,
+      width: 200,   // deliberately non-square …
+      height: 60,   // … to verify stretch is explicit, not implicit
+      assetId: "asset-banner",
+      visible: true,
+    };
+
+    const files = generateLvglFiles(project);
+    const ir = projectToLvglIR(project);
+
+    // Asset IR should carry target dimensions matching the widget
+    const assetIR = ir.assets.find((a) => a.id === "asset-banner");
+    expect(assetIR?.targetWidth).toBe(200);
+    expect(assetIR?.targetHeight).toBe(60);
+
+    // Generated code must set position and exact size …
+    expect(files["ui.c"]).toContain("lv_obj_set_pos(");
+    expect(files["ui.c"]).toContain("lv_obj_set_size(");
+    // … and must NOT inject lv_image_set_size_mode (incompatible with some LVGL 9 host versions)
+    expect(files["ui.c"]).not.toContain("lv_image_set_size_mode(");
+    // Explicit numeric dimensions must appear in the output
+    expect(files["ui.c"]).toContain("200");
+    expect(files["ui.c"]).toContain("60");
+  });
+
+  it("generateAssetCSource emits compilable stub when canvas unavailable", async () => {
+    const asset = {
+      id:         "asset-logo",
+      name:       "logo.gif",
+      mimeType:   "image/gif",
+      symbolName: "asset_logo",
+      macroName:  "UI_ASSET_LOGO",
+      dataUrl:    "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+    };
+
+    const src = await generateAssetCSource(asset, "rgb888");
+
+    // Must be valid C that at minimum declares the descriptor
+    expect(src).toContain(`const lv_image_dsc_t ${asset.symbolName}`);
+    expect(src).toContain(`${asset.symbolName}_map`);
+    expect(src).toContain("LV_COLOR_FORMAT_RGB888");
+    // Asset files must not directly include lvgl.h — ui.h (via ui_port.h) covers it
+    expect(src).not.toContain(`#include "lvgl.h"`);
+    expect(src).toContain(`#include "ui.h"`);
+  });
+
+  it("generateAssetCSource emits monochrome stub with I1 format", async () => {
+    const asset = {
+      id:         "asset-icon",
+      name:       "icon.png",
+      mimeType:   "image/png",
+      symbolName: "asset_icon",
+      macroName:  "UI_ASSET_ICON",
+      dataUrl:    "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+    };
+
+    const src = await generateAssetCSource(asset, "monochrome");
+    expect(src).toContain("LV_COLOR_FORMAT_I1");
+    expect(src).toContain(`const lv_image_dsc_t ${asset.symbolName}`);
   });
 });
