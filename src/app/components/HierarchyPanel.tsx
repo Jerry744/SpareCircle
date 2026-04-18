@@ -146,7 +146,7 @@ export function HierarchyPanel() {
       <div key={widget.id}>
         <div
           className={`relative flex items-center gap-1 px-2 py-1 rounded cursor-pointer transition-colors border border-transparent ${
-            isSelected ? "bg-[#3c4a5d] text-white" : "hover:bg-[#3c3c3c] text-gray-300"
+            isSelected ? "bg-highlight-900 text-white" : "hover:bg-neutral-600 text-neutral-200"
           }`}
           tabIndex={0}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
@@ -232,14 +232,14 @@ export function HierarchyPanel() {
             }
           }}
         >
-          {dropBefore && <div className="absolute left-1 right-1 h-0.5 bg-[#5b9dd9] -translate-y-2" />}
+          {dropBefore && <div className="absolute left-1 right-1 h-0.5 bg-highlight-500 -translate-y-2" />}
           {hasChildren ? (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setExpandedIds((prev) => ({ ...prev, [widget.id]: !(prev[widget.id] ?? true) }));
               }}
-              className="p-0.5 hover:bg-[#4c4c4c] rounded text-gray-400"
+              className="p-0.5 hover:bg-neutral-500 rounded text-neutral-300"
             >
               {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
@@ -247,24 +247,24 @@ export function HierarchyPanel() {
             <div className="w-5" />
           )}
           <span className="text-xs flex-1">{widget.name}</span>
-          <span className="text-[10px] text-gray-500">{widget.type}</span>
+          <span className="text-[10px] text-neutral-400">{widget.type}</span>
           {widget.type !== "Screen" && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 updateWidgetProperty(widget.id, "visible", widget.visible !== false ? false : true);
               }}
-              className={`p-0.5 hover:bg-[#4c4c4c] rounded transition-colors ${
-                widget.visible === false ? "text-gray-600" : "text-gray-400 opacity-0 group-hover:opacity-100"
+              className={`p-0.5 hover:bg-neutral-500 rounded transition-colors ${
+                widget.visible === false ? "text-neutral-500" : "text-neutral-300 opacity-0 group-hover:opacity-100"
               }`}
               title={widget.visible === false ? "Show widget" : "Hide widget"}
             >
               {widget.visible === false ? <EyeOff size={12} /> : <Eye size={12} />}
             </button>
           )}
-          {dropInside && <div className="absolute inset-0 border border-[#5b9dd9] rounded pointer-events-none" />}
-          {dropAfter && <div className="absolute left-1 right-1 h-0.5 bg-[#5b9dd9] translate-y-2" />}
-          {isDragging && <div className="absolute inset-0 bg-[#5b9dd9]/10 rounded pointer-events-none" />}
+          {dropInside && <div className="absolute inset-0 border border-highlight-500 rounded pointer-events-none" />}
+          {dropAfter && <div className="absolute left-1 right-1 h-0.5 bg-highlight-500 translate-y-2" />}
+          {isDragging && <div className="absolute inset-0 bg-highlight-500/10 rounded pointer-events-none" />}
         </div>
         {hasChildren && expanded && (
           <div>{widget.children.map((child) => renderItem(child, depth + 1))}</div>
@@ -275,8 +275,8 @@ export function HierarchyPanel() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="h-10 flex items-center justify-between px-3 border-b border-[#1e1e1e]">
-        <span className="text-xs font-semibold text-gray-400">HIERARCHY</span>
+      <div className="h-10 flex items-center justify-between px-3 border-b border-neutral-900">
+        <span className="text-xs font-semibold text-neutral-300">HIERARCHY</span>
       </div>
       <div className="flex-1 overflow-y-auto p-2 group">
         {rootTree ? renderItem(rootTree) : null}

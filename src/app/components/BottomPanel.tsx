@@ -29,17 +29,17 @@ const tabs = [
 
 export function BottomPanel({ activeTab, onTabChange }: BottomPanelProps) {
   return (
-    <div className="h-56 bg-[#2c2c2c] border-t border-[#1e1e1e] flex flex-col">
+    <div className="h-56 bg-neutral-700 border-t border-neutral-900 flex flex-col">
       {/* Tabs */}
-      <div className="flex items-center gap-1 px-2 pt-1 border-b border-[#1e1e1e]">
+      <div className="flex items-center gap-1 px-2 pt-1 border-b border-neutral-900">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={`px-3 py-2 flex items-center gap-2 text-sm border-b-2 transition-colors ${
               activeTab === tab.id
-                ? "border-[#5b9dd9] text-gray-100"
-                : "border-transparent text-gray-400 hover:text-gray-200"
+                ? "border-highlight-500 text-neutral-100"
+                : "border-transparent text-neutral-300 hover:text-neutral-100"
             }`}
           >
             <tab.icon size={14} />
@@ -112,11 +112,11 @@ function AssetsPanel() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <div className="text-sm font-semibold text-gray-200">Project Assets</div>
+        <div className="text-sm font-semibold text-neutral-100">Project Assets</div>
         <div className="flex gap-2">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="px-3 py-1 bg-[#5b9dd9] hover:bg-[#6ba8dd] rounded text-xs flex items-center gap-1 transition-colors text-white"
+            className="px-3 py-1 bg-highlight-500 hover:bg-highlight-400 rounded text-xs flex items-center gap-1 transition-colors text-white"
           >
             <Upload size={12} />
             Import
@@ -141,7 +141,7 @@ function AssetsPanel() {
         <div className="mb-2 text-[11px] text-emerald-300">{message}</div>
       ) : null}
       {assets.length === 0 ? (
-        <div className="text-xs text-gray-500 border border-dashed border-[#3c3c3c] rounded p-4">
+        <div className="text-xs text-neutral-400 border border-dashed border-neutral-600 rounded p-4">
           No assets yet. Import image files here to use them in Image widgets.
         </div>
       ) : null}
@@ -149,17 +149,17 @@ function AssetsPanel() {
         {assets.map((asset) => (
           <div
             key={asset.id}
-            className="group relative p-1.5 bg-[#252525] hover:bg-[#3c3c3c] rounded transition-colors border border-transparent hover:border-[#5b9dd9]/30"
+            className="group relative p-1.5 bg-neutral-800 hover:bg-neutral-600 rounded transition-colors border border-transparent hover:border-highlight-500/30"
             title={`${asset.name} • ${formatBytes(estimateAssetSize(asset.dataUrl))}`}
           >
-            <div className="w-full aspect-square bg-[#1e1e1e] rounded flex items-center justify-center overflow-hidden">
+            <div className="w-full aspect-square bg-neutral-900 rounded flex items-center justify-center overflow-hidden">
               <img src={asset.dataUrl} alt={asset.name} className="max-w-full max-h-full object-contain" />
             </div>
-            <div className="mt-1 text-[10px] truncate text-gray-400 leading-tight">{asset.name}</div>
+            <div className="mt-1 text-[10px] truncate text-neutral-300 leading-tight">{asset.name}</div>
             <button
               type="button"
               onClick={() => deleteAsset(asset.id)}
-              className="absolute top-1 right-1 p-0.5 rounded bg-[#1e1e1e]/80 text-gray-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-1 right-1 p-0.5 rounded bg-neutral-900/80 text-neutral-400 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Delete asset"
             >
               <Trash2 size={10} />
@@ -181,8 +181,8 @@ function ComponentsPanel() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <div className="text-sm font-semibold text-gray-200">Reusable Components</div>
-        <button className="px-3 py-1 bg-[#5b9dd9] hover:bg-[#6ba8dd] rounded text-xs flex items-center gap-1 transition-colors text-white">
+        <div className="text-sm font-semibold text-neutral-100">Reusable Components</div>
+        <button className="px-3 py-1 bg-highlight-500 hover:bg-highlight-400 rounded text-xs flex items-center gap-1 transition-colors text-white">
           <Plus size={12} />
           Create
         </button>
@@ -191,13 +191,13 @@ function ComponentsPanel() {
         {components.map((comp, i) => (
           <div
             key={i}
-            className="p-3 bg-[#252525] hover:bg-[#3c3c3c] rounded cursor-pointer flex items-center justify-between transition-colors border border-transparent hover:border-[#5b9dd9]/30"
+            className="p-3 bg-neutral-800 hover:bg-neutral-600 rounded cursor-pointer flex items-center justify-between transition-colors border border-transparent hover:border-highlight-500/30"
           >
             <div>
-              <div className="text-sm text-gray-200">{comp.name}</div>
-              <div className="text-xs text-gray-500">{comp.widgets} widgets</div>
+              <div className="text-sm text-neutral-100">{comp.name}</div>
+              <div className="text-xs text-neutral-400">{comp.widgets} widgets</div>
             </div>
-            <Package size={16} className="text-gray-500" />
+            <Package size={16} className="text-neutral-400" />
           </div>
         ))}
       </div>
@@ -217,18 +217,18 @@ function ThemesPanel() {
 
   return (
     <div>
-      <div className="text-sm font-semibold mb-3 text-gray-200">Global Theme Colors</div>
+      <div className="text-sm font-semibold mb-3 text-neutral-100">Global Theme Colors</div>
       <div className="grid grid-cols-3 gap-3">
         {colors.map((color, i) => (
-          <div key={i} className="p-3 bg-[#252525] rounded border border-[#3c3c3c]">
+          <div key={i} className="p-3 bg-neutral-800 rounded border border-neutral-600">
             <div className="flex items-center gap-2 mb-2">
               <div
-                className="w-8 h-8 rounded border border-[#3c3c3c]"
+                className="w-8 h-8 rounded border border-neutral-600"
                 style={{ backgroundColor: color.value }}
               />
               <div className="flex-1">
-                <div className="text-xs text-gray-200">{color.name}</div>
-                <div className="text-[10px] text-gray-500">{color.value}</div>
+                <div className="text-xs text-neutral-100">{color.name}</div>
+                <div className="text-[10px] text-neutral-400">{color.value}</div>
               </div>
             </div>
           </div>
@@ -247,21 +247,21 @@ function EventsPanel() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <div className="text-sm font-semibold text-gray-200">Event Handlers</div>
-        <button className="px-3 py-1 bg-[#5b9dd9] hover:bg-[#6ba8dd] rounded text-xs flex items-center gap-1 transition-colors text-white">
+        <div className="text-sm font-semibold text-neutral-100">Event Handlers</div>
+        <button className="px-3 py-1 bg-highlight-500 hover:bg-highlight-400 rounded text-xs flex items-center gap-1 transition-colors text-white">
           <Plus size={12} />
           Add Event
         </button>
       </div>
       <div className="space-y-2">
         {events.map((event, i) => (
-          <div key={i} className="p-3 bg-[#252525] rounded border border-[#3c3c3c]">
+          <div key={i} className="p-3 bg-neutral-800 rounded border border-neutral-600">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-semibold text-gray-200">{event.widget}</div>
-              <Zap size={14} className="text-[#fbbf24]" />
+              <div className="text-sm font-semibold text-neutral-100">{event.widget}</div>
+              <Zap size={14} className="text-warning-500" />
             </div>
-            <div className="text-xs text-gray-400">Event: {event.event}</div>
-            <div className="text-xs text-gray-400">Action: {event.action}</div>
+            <div className="text-xs text-neutral-300">Event: {event.event}</div>
+            <div className="text-xs text-neutral-300">Action: {event.action}</div>
           </div>
         ))}
       </div>
@@ -272,32 +272,32 @@ function EventsPanel() {
 function ExportPanel() {
   return (
     <div>
-      <div className="text-sm font-semibold mb-3 text-gray-200">Export Options</div>
+      <div className="text-sm font-semibold mb-3 text-neutral-100">Export Options</div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="p-4 bg-[#252525] hover:bg-[#3c3c3c] rounded cursor-pointer transition-colors border border-transparent hover:border-[#5b9dd9]/30">
-          <FileCode size={24} className="text-[#5b9dd9] mb-2" />
-          <div className="text-sm font-semibold mb-1 text-gray-200">C Source Code</div>
-          <div className="text-xs text-gray-400">Export as LVGL C files</div>
+        <div className="p-4 bg-neutral-800 hover:bg-neutral-600 rounded cursor-pointer transition-colors border border-transparent hover:border-highlight-500/30">
+          <FileCode size={24} className="text-highlight-500 mb-2" />
+          <div className="text-sm font-semibold mb-1 text-neutral-100">C Source Code</div>
+          <div className="text-xs text-neutral-300">Export as LVGL C files</div>
         </div>
-        <div className="p-4 bg-[#252525] hover:bg-[#3c3c3c] rounded cursor-pointer transition-colors border border-transparent hover:border-[#5b9dd9]/30">
-          <Download size={24} className="text-[#4caf50] mb-2" />
-          <div className="text-sm font-semibold mb-1 text-gray-200">Binary</div>
-          <div className="text-xs text-gray-400">Compile and download</div>
+        <div className="p-4 bg-neutral-800 hover:bg-neutral-600 rounded cursor-pointer transition-colors border border-transparent hover:border-highlight-500/30">
+          <Download size={24} className="text-success-500 mb-2" />
+          <div className="text-sm font-semibold mb-1 text-neutral-100">Binary</div>
+          <div className="text-xs text-neutral-300">Compile and download</div>
         </div>
       </div>
-      <div className="mt-4 p-3 bg-[#252525] rounded border border-[#3c3c3c]">
-        <div className="text-xs text-gray-400 mb-2">Export Settings</div>
+      <div className="mt-4 p-3 bg-neutral-800 rounded border border-neutral-600">
+        <div className="text-xs text-neutral-300 mb-2">Export Settings</div>
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-xs text-gray-300">
-            <input type="checkbox" defaultChecked className="rounded accent-[#5b9dd9]" />
+          <label className="flex items-center gap-2 text-xs text-neutral-200">
+            <input type="checkbox" defaultChecked className="rounded accent-highlight-500" />
             Include assets
           </label>
-          <label className="flex items-center gap-2 text-xs text-gray-300">
-            <input type="checkbox" defaultChecked className="rounded accent-[#5b9dd9]" />
+          <label className="flex items-center gap-2 text-xs text-neutral-200">
+            <input type="checkbox" defaultChecked className="rounded accent-highlight-500" />
             Generate screen navigation
           </label>
-          <label className="flex items-center gap-2 text-xs text-gray-300">
-            <input type="checkbox" className="rounded accent-[#5b9dd9]" />
+          <label className="flex items-center gap-2 text-xs text-neutral-200">
+            <input type="checkbox" className="rounded accent-highlight-500" />
             Optimize for size
           </label>
         </div>
@@ -334,18 +334,18 @@ function SettingsPanel() {
 
   return (
     <div>
-      <div className="text-sm font-semibold mb-3 text-gray-200">Project Settings</div>
+      <div className="text-sm font-semibold mb-3 text-neutral-100">Project Settings</div>
       <div className="space-y-4">
         <div>
-          <label className="text-xs text-gray-400 mb-1 block">Project Name</label>
+          <label className="text-xs text-neutral-300 mb-1 block">Project Name</label>
           <input
             type="text"
             defaultValue="smart_thermostat"
-            className="w-full px-3 py-2 bg-[#252525] border border-[#3c3c3c] rounded text-sm focus:border-[#5b9dd9] outline-none text-gray-200"
+            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-sm focus:border-highlight-500 outline-none text-neutral-100"
           />
         </div>
         <div>
-          <label className="text-xs text-gray-400 mb-1 block">Display Resolution</label>
+          <label className="text-xs text-neutral-300 mb-1 block">Display Resolution</label>
           <div className="grid grid-cols-2 gap-2">
             <input
               type="text"
@@ -356,7 +356,7 @@ function SettingsPanel() {
                 if (e.key === "Enter") { commitDimension("width", widthDraft, activeScreen.meta.width); e.currentTarget.blur(); }
                 if (e.key === "Escape") { setWidthDraft(null); e.currentTarget.blur(); }
               }}
-              className="px-3 py-2 bg-[#252525] border border-[#3c3c3c] rounded text-sm focus:border-[#5b9dd9] outline-none text-gray-200"
+              className="px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-sm focus:border-highlight-500 outline-none text-neutral-100"
             />
             <input
               type="text"
@@ -367,17 +367,17 @@ function SettingsPanel() {
                 if (e.key === "Enter") { commitDimension("height", heightDraft, activeScreen.meta.height); e.currentTarget.blur(); }
                 if (e.key === "Escape") { setHeightDraft(null); e.currentTarget.blur(); }
               }}
-              className="px-3 py-2 bg-[#252525] border border-[#3c3c3c] rounded text-sm focus:border-[#5b9dd9] outline-none text-gray-200"
+              className="px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-sm focus:border-highlight-500 outline-none text-neutral-100"
             />
           </div>
-          <div className="mt-1 text-[11px] text-gray-500">Width × Height (px)</div>
+          <div className="mt-1 text-[11px] text-neutral-400">Width × Height (px)</div>
         </div>
         <div>
-          <label className="text-xs text-gray-400 mb-1 block">Color Format</label>
+          <label className="text-xs text-neutral-300 mb-1 block">Color Format</label>
           <select
             value={project.colorFormat ?? "rgb888"}
             onChange={(e) => setColorFormat(e.target.value as typeof COLOR_FORMAT_OPTIONS[number]["value"])}
-            className="w-full px-3 py-2 bg-[#252525] border border-[#3c3c3c] rounded text-sm focus:border-[#5b9dd9] outline-none cursor-pointer text-gray-200"
+            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-sm focus:border-highlight-500 outline-none cursor-pointer text-neutral-100"
           >
             {COLOR_FORMAT_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -392,8 +392,8 @@ function SettingsPanel() {
           )}
         </div>
         <div>
-          <label className="text-xs text-gray-400 mb-1 block">Target Platform</label>
-          <select className="w-full px-3 py-2 bg-[#252525] border border-[#3c3c3c] rounded text-sm focus:border-[#5b9dd9] outline-none cursor-pointer text-gray-200">
+          <label className="text-xs text-neutral-300 mb-1 block">Target Platform</label>
+          <select className="w-full px-3 py-2 bg-neutral-800 border border-neutral-600 rounded text-sm focus:border-highlight-500 outline-none cursor-pointer text-neutral-100">
             <option>ESP32</option>
             <option>STM32</option>
             <option>Arduino</option>

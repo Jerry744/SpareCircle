@@ -13,16 +13,16 @@ export function RightSidebar() {
   const [activeTab, setActiveTab] = useState<RightSidebarTab>("inspector");
 
   return (
-    <div className="h-full bg-[#2c2c2c] border-l border-[#1e1e1e] flex flex-col">
-      <div className="h-10 border-b border-[#1e1e1e] px-2 flex items-end gap-1">
+    <div className="h-full bg-neutral-700 border-l border-neutral-900 flex flex-col">
+      <div className="h-10 border-b border-neutral-900 px-2 flex items-end gap-1">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`px-3 py-2 text-xs font-semibold rounded-t transition-colors ${
               activeTab === tab.id
-                ? "bg-[#3c4a5d] text-white"
-                : "text-gray-400 hover:text-gray-200 hover:bg-[#353535]"
+                ? "bg-highlight-900 text-white"
+                : "text-neutral-300 hover:text-neutral-100 hover:bg-neutral-600"
             }`}
           >
             {tab.label}

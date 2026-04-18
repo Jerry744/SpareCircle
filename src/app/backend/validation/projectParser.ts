@@ -7,7 +7,7 @@ import {
   type ScreenModel,
   type WidgetNode,
 } from "../types";
-import { MATERIAL_COLOR_PRESET } from "../../constants/designTokens";
+import { createDefaultUserStyleTokens } from "../../constants/styleTokenPresets";
 import { isRecord, isColorFormat, isValidColorString } from "./helpers";
 import { parseNormalizedWidget, parseLegacyWidget, flattenLegacyTree } from "./widgetParser";
 import { parseAssets } from "./assetParser";
@@ -380,12 +380,7 @@ export function createInitialProject(): ProjectSnapshot {
       },
     ],
     widgetsById,
-    styleTokens: MATERIAL_COLOR_PRESET.map((token, index) => ({
-      id: `material-${index + 1}`,
-      name: token.name,
-      type: "color",
-      value: token.value,
-    })),
+    styleTokens: createDefaultUserStyleTokens(),
     assets: {},
     canvasSnap: { ...DEFAULT_CANVAS_SNAP },
   };

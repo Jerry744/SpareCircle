@@ -53,15 +53,15 @@ export function WidgetsPanel({ collapsed = false, onToggleCollapse }: WidgetsPan
   const categories = Array.from(new Set(widgets.map((w) => w.category)));
 
   return (
-    <div className="h-full bg-[#2c2c2c] border-r border-[#1e1e1e] flex flex-col">
+    <div className="h-full bg-neutral-700 border-r border-neutral-900 flex flex-col">
       {/* Header */}
-      <div className="h-10 flex items-center border-b border-[#1e1e1e] shrink-0" style={{ justifyContent: collapsed ? "center" : "space-between", padding: collapsed ? "0" : "0 8px 0 12px" }}>
+      <div className="h-10 flex items-center border-b border-neutral-900 shrink-0" style={{ justifyContent: collapsed ? "center" : "space-between", padding: collapsed ? "0" : "0 8px 0 12px" }}>
         {!collapsed && (
-          <span className="text-xs font-semibold text-gray-400">WIDGETS</span>
+          <span className="text-xs font-semibold text-neutral-300">WIDGETS</span>
         )}
         <button
           onClick={onToggleCollapse}
-          className="flex items-center justify-center w-6 h-6 rounded text-gray-500 hover:text-gray-200 hover:bg-[#3c3c3c] transition-colors"
+          className="flex items-center justify-center w-6 h-6 rounded text-neutral-400 hover:text-neutral-100 hover:bg-neutral-600 transition-colors"
           title={collapsed ? "Expand widgets panel" : "Collapse widgets panel"}
         >
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -76,7 +76,7 @@ export function WidgetsPanel({ collapsed = false, onToggleCollapse }: WidgetsPan
             {categories.map((category, catIndex) => (
               <div key={category} className="flex flex-col items-center w-full">
                 {catIndex > 0 && (
-                  <div className="w-full border-t border-[#1e1e1e] my-2" />
+                  <div className="w-full border-t border-neutral-900 my-2" />
                 )}
                 {widgets
                   .filter((w) => w.category === category)
@@ -87,7 +87,7 @@ export function WidgetsPanel({ collapsed = false, onToggleCollapse }: WidgetsPan
                         key={widget.id}
                         className={`flex items-center justify-center w-full py-1 transition-colors ${
                           supported
-                            ? "hover:text-gray-100 cursor-pointer"
+                            ? "hover:text-neutral-100 cursor-pointer"
                             : "cursor-not-allowed opacity-40"
                         }`}
                         draggable={supported}
@@ -97,7 +97,7 @@ export function WidgetsPanel({ collapsed = false, onToggleCollapse }: WidgetsPan
                         }}
                         title={supported ? widget.name : `${widget.name} (Demo2 暂不支持)`}
                       >
-                        <widget.icon size={18} className={supported ? "text-gray-400 hover:text-gray-200" : "text-gray-600"} />
+                        <widget.icon size={18} className={supported ? "text-neutral-300 hover:text-neutral-100" : "text-neutral-500"} />
                       </div>
                     );
                   })}
@@ -108,7 +108,7 @@ export function WidgetsPanel({ collapsed = false, onToggleCollapse }: WidgetsPan
           /* Expanded: 2-column grid with category labels and names */
           categories.map((category) => (
             <div key={category} className="mb-4">
-              <div className="text-xs text-gray-500 mb-2 px-1 font-semibold">{category}</div>
+              <div className="text-xs text-neutral-400 mb-2 px-1 font-semibold">{category}</div>
               <div className="grid grid-cols-2 gap-1.5">
                 {widgets
                   .filter((w) => w.category === category)
@@ -119,8 +119,8 @@ export function WidgetsPanel({ collapsed = false, onToggleCollapse }: WidgetsPan
                         key={widget.id}
                         className={`p-2 rounded flex flex-col items-center gap-1 transition-colors border ${
                           supported
-                            ? "bg-[#252525] hover:bg-[#3c3c3c] cursor-pointer border-transparent hover:border-[#5b9dd9]/30"
-                            : "bg-[#212121] cursor-not-allowed border-[#2a2a2a] opacity-45"
+                            ? "bg-neutral-800 hover:bg-neutral-600 cursor-pointer border-transparent hover:border-highlight-500/30"
+                            : "bg-neutral-900 cursor-not-allowed border-neutral-900 opacity-45"
                         }`}
                         draggable={supported}
                         onDragStart={(e) => {
@@ -129,8 +129,8 @@ export function WidgetsPanel({ collapsed = false, onToggleCollapse }: WidgetsPan
                         }}
                         title={supported ? widget.name : `${widget.name} (Demo2 暂不支持)`}
                       >
-                        <widget.icon size={18} className="text-gray-400" />
-                        <span className="text-xs text-center text-gray-300">{widget.name}</span>
+                        <widget.icon size={18} className="text-neutral-300" />
+                        <span className="text-xs text-center text-neutral-200">{widget.name}</span>
                       </div>
                     );
                   })}

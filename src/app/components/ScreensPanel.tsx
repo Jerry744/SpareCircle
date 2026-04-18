@@ -18,10 +18,10 @@ export function ScreensPanel() {
 
   return (
     <div className="shrink-0 flex flex-col min-h-0 max-h-[40%]">
-      <div className="h-10 flex items-center justify-between px-3 border-b border-[#1e1e1e]">
-        <span className="text-xs font-semibold text-gray-400">SCREENS</span>
+      <div className="h-10 flex items-center justify-between px-3 border-b border-neutral-900">
+        <span className="text-xs font-semibold text-neutral-300">SCREENS</span>
         <button
-          className="p-1 hover:bg-[#3c3c3c] rounded transition-colors text-gray-400 hover:text-gray-200"
+          className="p-1 hover:bg-neutral-600 rounded transition-colors text-neutral-300 hover:text-neutral-100"
           onClick={() => createScreen()}
           aria-label="Create screen"
         >
@@ -35,15 +35,15 @@ export function ScreensPanel() {
               key={screen.id}
               className={`px-3 py-2 rounded cursor-pointer flex items-center gap-2 transition-colors ${
                 screen.active
-                  ? "bg-[#3c4a5d] text-white"
-                  : "hover:bg-[#3c3c3c] text-gray-300"
+                  ? "bg-highlight-900 text-white"
+                  : "hover:bg-neutral-600 text-neutral-200"
               }`}
               onClick={() => setActiveScreen(screen.id)}
             >
               <screen.icon size={14} />
               <span className="text-sm flex-1">{screen.name}</span>
               <button
-                className="p-1 hover:bg-[#4c4c4c] rounded text-gray-400 hover:text-gray-200"
+                className="p-1 hover:bg-neutral-500 rounded text-neutral-300 hover:text-neutral-100"
                 onClick={(event) => {
                   event.stopPropagation();
                   const nextName = window.prompt("Rename screen", screen.name)?.trim();
@@ -56,7 +56,7 @@ export function ScreensPanel() {
                 <Pencil size={12} />
               </button>
               <button
-                className="p-1 hover:bg-[#4c4c4c] rounded text-gray-400 hover:text-gray-200"
+                className="p-1 hover:bg-neutral-500 rounded text-neutral-300 hover:text-neutral-100"
                 onClick={(event) => {
                   event.stopPropagation();
                   duplicateScreen(screen.id);
@@ -66,7 +66,7 @@ export function ScreensPanel() {
                 <Copy size={12} />
               </button>
               <button
-                className="p-1 hover:bg-[#4c4c4c] rounded text-gray-400 hover:text-rose-300 disabled:opacity-40"
+                className="p-1 hover:bg-neutral-500 rounded text-neutral-300 hover:text-error-400 disabled:opacity-40"
                 disabled={project.screens.length <= 1}
                 onClick={(event) => {
                   event.stopPropagation();

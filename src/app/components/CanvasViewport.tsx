@@ -1,5 +1,6 @@
 import { ZoomIn, ZoomOut, Maximize } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { DESIGN_TOKENS } from "../constants/designTokens";
 import {
   buildWidgetTree,
   canContainChildren,
@@ -147,7 +148,7 @@ export function CanvasViewport() {
     const offsetX = ((camera.x * camera.zoom) % scaledGridSize);
     const offsetY = ((camera.y * camera.zoom) % scaledGridSize);
 
-    ctx.strokeStyle = "#3e3e42";
+    ctx.strokeStyle = DESIGN_TOKENS.neutral[600];
     ctx.lineWidth = 1;
     ctx.globalAlpha = 0.3;
 
@@ -375,7 +376,7 @@ export function CanvasViewport() {
       const indicatorW = Math.round(widget.width * pct);
       const trackR = trackH / 2;
       // Track background (opaque dark gray so it fully covers the canvas beneath)
-      ctx.fillStyle = "#374151";
+      ctx.fillStyle = DESIGN_TOKENS.neutral[600];
       drawRoundedRect(ctx, absX, trackY, widget.width, trackH, trackR);
       ctx.fill();
       // Indicator (filled portion, width driven by value 0-100)
@@ -400,13 +401,13 @@ export function CanvasViewport() {
 
     if (isSelected) {
       ctx.setLineDash([5, 4]);
-      ctx.strokeStyle = "#5b9dd9";
+      ctx.strokeStyle = DESIGN_TOKENS.highlight[500];
       ctx.lineWidth = 2;
       ctx.strokeRect(absX - 1, absY - 1, widget.width + 2, widget.height + 2);
       ctx.setLineDash([]);
 
       const handleSize = 10;
-      ctx.fillStyle = "#5b9dd9";
+      ctx.fillStyle = DESIGN_TOKENS.highlight[500];
       ctx.fillRect(absX + widget.width - handleSize / 2, absY + widget.height - handleSize / 2, handleSize, handleSize);
     }
 
@@ -517,7 +518,7 @@ export function CanvasViewport() {
     if (!canvas || !ctx) return;
 
     // 清空画布
-    ctx.fillStyle = "#1e1e1e";
+    ctx.fillStyle = DESIGN_TOKENS.neutral[900];
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // 绘制网格
@@ -538,7 +539,7 @@ export function CanvasViewport() {
     if (dragStateRef.current && snapGuidesRef.current && project.canvasSnap?.magnetSnapEnabled) {
       const guides = snapGuidesRef.current;
       ctx.save();
-      ctx.strokeStyle = "rgba(91,157,217,0.35)";
+      ctx.strokeStyle = `${DESIGN_TOKENS.highlight[500]}59`;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 3]);
       for (const xVal of guides.xGuides) {
@@ -567,18 +568,18 @@ export function CanvasViewport() {
       const ry = Math.min(s.y, e.y);
       const rw = Math.abs(e.x - s.x);
       const rh = Math.abs(e.y - s.y);
-      ctx.strokeStyle = "#5b9dd9";
+      ctx.strokeStyle = DESIGN_TOKENS.highlight[500];
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 3]);
       ctx.strokeRect(rx, ry, rw, rh);
-      ctx.fillStyle = "rgba(91,157,217,0.08)";
+      ctx.fillStyle = `${DESIGN_TOKENS.highlight[500]}14`;
       ctx.fillRect(rx, ry, rw, rh);
       ctx.setLineDash([]);
     }
 
     // 绘制坐标轴（调试用）
     const origin = worldToScreen(0, 0);
-    ctx.strokeStyle = "#ef4444";
+    ctx.strokeStyle = DESIGN_TOKENS.status.error[500];
     ctx.lineWidth = 2;
     ctx.globalAlpha = 0.5;
     ctx.beginPath();
@@ -1045,37 +1046,37 @@ export function CanvasViewport() {
   };
 
   return (
-    <div className="h-full bg-[#1e1e1e] flex flex-col">
+    <div className="h-full bg-neutral-900 flex flex-col">
       {/* Canvas Toolbar */}
-      <div className="h-10 bg-[#2c2c2c] border-b border-[#1e1e1e] flex items-center justify-between px-3">
+      <div className="h-10 bg-neutral-700 border-b border-neutral-900 flex items-center justify-between px-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">Canvas</span>
-          <div className="h-4 w-px bg-[#3c3c3c]" />
-          <span className="text-xs text-gray-400">{activeScreen.meta.width} × {activeScreen.meta.height}</span>
-          <div className="h-4 w-px bg-[#3c3c3c]" />
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-neutral-300">Canvas</span>
+          <div className="h-4 w-px bg-neutral-600" />
+          <span className="text-xs text-neutral-300">{activeScreen.meta.width} × {activeScreen.meta.height}</span>
+          <div className="h-4 w-px bg-neutral-600" />
+          <span className="text-xs text-neutral-400">
             Pan: Two-Finger Drag / Space / Middle Drag | Zoom: Pinch
           </span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleZoomOut}
-            className="p-1 hover:bg-[#3c3c3c] rounded transition-colors text-gray-400"
+            className="p-1 hover:bg-neutral-600 rounded transition-colors text-neutral-300"
           >
             <ZoomOut size={14} />
           </button>
-          <span className="text-xs text-gray-400 w-14 text-center">
+          <span className="text-xs text-neutral-300 w-14 text-center">
             {Math.round(camera.zoom * 100)}%
           </span>
           <button
             onClick={handleZoomIn}
-            className="p-1 hover:bg-[#3c3c3c] rounded transition-colors text-gray-400"
+            className="p-1 hover:bg-neutral-600 rounded transition-colors text-neutral-300"
           >
             <ZoomIn size={14} />
           </button>
           <button
             onClick={handleResetView}
-            className="p-1 hover:bg-[#3c3c3c] rounded transition-colors text-gray-400"
+            className="p-1 hover:bg-neutral-600 rounded transition-colors text-neutral-300"
           >
             <Maximize size={14} />
           </button>

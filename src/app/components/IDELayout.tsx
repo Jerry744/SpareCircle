@@ -26,22 +26,22 @@ export function IDELayout() {
 
   return (
     <EditorBackendProvider>
-      <div className="sc-editor-shell h-screen w-screen flex flex-col bg-[#1e1e1e] text-gray-200">
+      <div className="sc-editor-shell h-screen w-screen flex flex-col bg-neutral-900 text-neutral-100">
         {/* Top Toolbar */}
         <TopToolbar />
 
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Sidebar - fixed width */}
-          <div className="w-[260px] min-w-[260px] max-w-[260px] h-full flex flex-col bg-[#2c2c2c] border-r border-[#1e1e1e]">
+          <div className="w-[260px] min-w-[260px] max-w-[260px] h-full flex flex-col bg-neutral-700 border-r border-neutral-900">
             <ScreensPanel />
-            <div className="h-px bg-[#1e1e1e]" />
+            <div className="h-px bg-neutral-900" />
             <HierarchyPanel />
           </div>
 
           {/* Widgets Library - collapsible */}
           <div
-            className="h-full border-r border-[#1e1e1e] transition-all duration-200 overflow-hidden"
+            className="h-full border-r border-neutral-900 transition-all duration-200 overflow-hidden"
             style={{ width: widgetsPanelCollapsed ? 36 : 220, minWidth: widgetsPanelCollapsed ? 36 : 220, maxWidth: widgetsPanelCollapsed ? 36 : 220 }}
           >
             <WidgetsPanel collapsed={widgetsPanelCollapsed} onToggleCollapse={() => setWidgetsPanelCollapsed(c => !c)} />
@@ -52,7 +52,7 @@ export function IDELayout() {
             <div className="flex-1 overflow-hidden">
               <CanvasViewport />
             </div>
-            <div className="h-px bg-[#1e1e1e]" />
+            <div className="h-px bg-neutral-900" />
             <BottomPanel
               activeTab={activeBottomTab}
               onTabChange={setActiveBottomTab}
@@ -60,7 +60,7 @@ export function IDELayout() {
           </div>
 
           {/* Right Sidebar - fixed width */}
-          <div className="w-[320px] min-w-[320px] max-w-[320px] h-full border-l border-[#1e1e1e]">
+          <div className="w-[320px] min-w-[320px] max-w-[320px] h-full border-l border-neutral-900">
             <RightSidebar />
           </div>
         </div>
