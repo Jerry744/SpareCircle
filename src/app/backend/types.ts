@@ -156,7 +156,7 @@ export interface EditorBackendValue {
     deleteScreen: (screenId: string) => void;
     beginInteraction: (kind: "move" | "resize", widgetIds: string[], pointer: Point, handle?: "se") => void;
     updateInteraction: (pointer: Point) => void;
-    commitInteraction: () => void;
+    commitInteraction: (squash?: boolean) => void;
     cancelInteraction: () => void;
     addWidget: (parentId: string, widgetType: WidgetType, x: number, y: number) => void;
     deleteSelectedWidgets: () => void;
@@ -186,6 +186,11 @@ export interface EditorBackendValue {
     updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) => void;
     setColorFormat: (format: ColorFormat) => void;
     setCanvasSnapSettings: (settings: Partial<CanvasSnapSettings>) => void;
+    copySelectionToClipboard: () => void;
+    pasteFromClipboard: () => void;
+    duplicateWidgets: (sourceIds: string[]) => string[];
+    duplicateSelectionInPlace: () => string[];
+    duplicateToTarget: (sourceIds: string[], targetParentId: string, targetIndex: number) => void;
     serializeProject: () => string;
     hydrateProject: (serializedProject: string) => HydrateProjectResult;
     exportLvglC: () => Promise<ExportLvglResult>;

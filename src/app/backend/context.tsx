@@ -17,6 +17,7 @@ import {
 } from "./validation";
 import { editorReducer } from "./reducer";
 import { getActiveScreen } from "./tree";
+import { packClipboard, instantiateClipboard, type ClipboardPayload } from "./clipboard";
 import { generateLvglZip } from "./codegen/generator";
 import { loadActiveProjectFromIndexedDb, saveActiveProjectToIndexedDb } from "./persistence";
 import type {
@@ -66,6 +67,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 export function EditorBackendProvider({ children }: { children: ReactNode }) {
   const [isPersistenceReady, setIsPersistenceReady] = useState(false);
   const saveTimerRef = useRef<number | null>(null);
+  const clipboardRef = useRef<ClipboardPayload | null>(null);
   const [state, dispatch] = useReducer(editorReducer, undefined, () => ({
     project: createInitialProject(),
     selectedWidgetIds: [],
@@ -144,7 +146,7 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
       beginInteraction: (kind: "move" | "resize", widgetIds: string[], pointer: Point, handle?: "se") =>
         dispatch({ type: "beginInteraction", kind, widgetIds, pointer, handle }),
       updateInteraction: (pointer: Point) => dispatch({ type: "updateInteraction", pointer }),
-      commitInteraction: () => dispatch({ type: "commitInteraction" }),
+      commitInteraction: (squash = false) => dispatch({ type: "commitInteraction", squash }),
       cancelInteraction: () => dispatch({ type: "cancelInteraction" }),
       addWidget: (parentId: string, widgetType: WidgetType, x: number, y: number) =>
         dispatch({ type: "addWidget", parentId, widgetType, x, y }),
@@ -213,6 +215,39 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "updateScreenMeta", screenId, key, value }),
       setColorFormat: (format: ColorFormat) => dispatch({ type: "setColorFormat", format }),
       setCanvasSnapSettings: (settings: Partial<CanvasSnapSettings>) => dispatch({ type: "setCanvasSnapSettings", settings }),
+      copySelectionToClipboard: () => {
+        if (state.selectedWidgetIds.length === 0) return;
+        clipboardRef.current = packClipboard(state.project, state.selectedWidgetIds);
+      },
+      pasteFromClipboard: () => {
+        if (!clipboardRef.current) return;
+        const activeScreen = getActiveScreen(state.project);
+        dispatch({ type: "pasteClipboardSubtrees", payload: clipboardRef.current, targetParentId: activeScreen.rootNodeId });
+      },
+      duplicateWidgets: (sourceIds: string[]): string[] => {
+        if (sourceIds.length === 0) return [];
+        const payload = packClipboard(state.project, sourceIds);
+        if (!payload) return [];
+        const activeScreen = getActiveScreen(state.project);
+        const { newRootIds } = instantiateClipboard(state.project, payload, activeScreen.rootNodeId);
+        dispatch({ type: "pasteClipboardSubtrees", payload, targetParentId: activeScreen.rootNodeId });
+        return newRootIds;
+      },
+      duplicateSelectionInPlace: (): string[] => {
+        if (state.selectedWidgetIds.length === 0) return [];
+        const payload = packClipboard(state.project, state.selectedWidgetIds);
+        if (!payload) return [];
+        const activeScreen = getActiveScreen(state.project);
+        const { newRootIds } = instantiateClipboard(state.project, payload, activeScreen.rootNodeId);
+        dispatch({ type: "pasteClipboardSubtrees", payload, targetParentId: activeScreen.rootNodeId });
+        return newRootIds;
+      },
+      duplicateToTarget: (sourceIds: string[], targetParentId: string, targetIndex: number) => {
+        if (sourceIds.length === 0) return;
+        const payload = packClipboard(state.project, sourceIds);
+        if (!payload) return;
+        dispatch({ type: "pasteClipboardSubtrees", payload, targetParentId, targetIndex });
+      },
       serializeProject: () => serializeProjectSnapshot(state.project),
       hydrateProject: (serializedProject: string): HydrateProjectResult => {
         const result = deserializeProjectSnapshot(serializedProject);

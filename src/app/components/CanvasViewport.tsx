@@ -72,6 +72,7 @@ export function CanvasViewport() {
     handle?: "se";
   } | null>(null);
   const snapGuidesRef = useRef<{ xGuides: number[]; yGuides: number[] } | null>(null);
+  const isAltDupDragRef = useRef(false);
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
   const {
@@ -89,6 +90,9 @@ export function CanvasViewport() {
       commitInteraction,
       cancelInteraction,
       setSelection,
+      copySelectionToClipboard,
+      pasteFromClipboard,
+      duplicateWidgets,
     },
   } = useEditorBackend();
 
@@ -692,6 +696,18 @@ export function CanvasViewport() {
         return;
       }
 
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        copySelectionToClipboard();
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        pasteFromClipboard();
+        return;
+      }
+
       if (e.code === "Space" && !isSpacePressed) {
         e.preventDefault();
         setIsSpacePressed(true);
@@ -724,7 +740,7 @@ export function CanvasViewport() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [isSpacePressed, cancelInteraction, deleteSelectedWidgets, selectedWidgetIds]);
+  }, [isSpacePressed, cancelInteraction, deleteSelectedWidgets, selectedWidgetIds, copySelectionToClipboard, pasteFromClipboard]);
 
   // 鼠标事件
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -759,6 +775,7 @@ export function CanvasViewport() {
     const world = screenToWorldRef(e.clientX, e.clientY);
     const target = getHitTarget(world);
     const additive = e.metaKey || e.ctrlKey || e.shiftKey;
+    const isAltDrag = e.altKey && !additive;
 
     if (!target) {
       // Start marquee selection instead of immediately clearing
@@ -778,6 +795,14 @@ export function CanvasViewport() {
         return;
       }
       const dragIds = filterTopLevelIds(selectedWidgetIds, project);
+      if (isAltDrag) {
+        const newIds = duplicateWidgets(dragIds);
+        const actualIds = newIds.length > 0 ? newIds : dragIds;
+        isAltDupDragRef.current = true;
+        dragStateRef.current = { kind: "move", pointerStart: world, widgetIds: actualIds };
+        beginInteraction("move", actualIds, world);
+        return;
+      }
       dragStateRef.current = { kind: "move", pointerStart: world, widgetIds: dragIds };
       beginInteraction("move", dragIds, world);
       return;
@@ -807,12 +832,17 @@ export function CanvasViewport() {
       return;
     }
 
-    dragStateRef.current = {
-      kind: "move",
-      pointerStart: world,
-      widgetIds: filterTopLevelIds(nextSelection, project),
-    };
-    beginInteraction("move", filterTopLevelIds(nextSelection, project), world);
+    const moveDragIds = filterTopLevelIds(nextSelection, project);
+    if (isAltDrag) {
+      const newIds = duplicateWidgets(moveDragIds);
+      const actualIds = newIds.length > 0 ? newIds : moveDragIds;
+      isAltDupDragRef.current = true;
+      dragStateRef.current = { kind: "move", pointerStart: world, widgetIds: actualIds };
+      beginInteraction("move", actualIds, world);
+      return;
+    }
+    dragStateRef.current = { kind: "move", pointerStart: world, widgetIds: moveDragIds };
+    beginInteraction("move", moveDragIds, world);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -918,9 +948,10 @@ export function CanvasViewport() {
     }
 
     if (dragStateRef.current) {
-      commitInteraction();
+      commitInteraction(isAltDupDragRef.current);
       dragStateRef.current = null;
       snapGuidesRef.current = null;
+      isAltDupDragRef.current = false;
     }
   };
 

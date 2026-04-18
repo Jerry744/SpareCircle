@@ -64,7 +64,7 @@ export function HierarchyPanel() {
       project,
       selectedWidgetIds,
     },
-    actions: { selectWidget, moveWidget, deleteSelectedWidgets, updateWidgetProperty, setSelection },
+    actions: { selectWidget, moveWidget, deleteSelectedWidgets, updateWidgetProperty, setSelection, duplicateToTarget },
   } = useEditorBackend();
   const activeScreen = getActiveScreenFromProject(project);
   const rootTree = buildWidgetTree(project, activeScreen.rootNodeId);
@@ -75,10 +75,32 @@ export function HierarchyPanel() {
   const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ widgetId: string; position: DropPosition } | null>(null);
   const rangeAnchorRef = useRef<string | null>(null);
+  const isAltDragRef = useRef(false);
 
   const clearDragPreview = () => {
     setDraggingWidgetId(null);
     setDropTarget(null);
+    isAltDragRef.current = false;
+  };
+
+  const performDuplicate = (sourceWidgetId: string, targetWidgetId: string, position: DropPosition) => {
+    if (!rootTree || sourceWidgetId === targetWidgetId) return;
+    const root = rootTree;
+    const sourceIds = selectedWidgetIds.includes(sourceWidgetId) ? selectedWidgetIds : [sourceWidgetId];
+    let targetParentId: string;
+    let targetIndex: number;
+    if (position === "inside") {
+      const targetWidget = findWidgetLocation(root, targetWidgetId)?.widget;
+      if (!targetWidget || !canContainChildren(targetWidget.type)) return;
+      targetParentId = targetWidget.id;
+      targetIndex = targetWidget.children.length;
+    } else {
+      const targetLocation = findWidgetLocation(root, targetWidgetId);
+      if (!targetLocation?.parentId) return;
+      targetParentId = targetLocation.parentId;
+      targetIndex = targetLocation.index + (position === "after" ? 1 : 0);
+    }
+    duplicateToTarget(sourceIds, targetParentId, targetIndex);
   };
 
   const performMove = (widgetId: string, targetWidgetId: string, position: DropPosition) => {
@@ -166,7 +188,8 @@ export function HierarchyPanel() {
           }}
           draggable={widget.type !== "Screen"}
           onDragStart={(event) => {
-            event.dataTransfer.effectAllowed = "move";
+            isAltDragRef.current = event.altKey;
+            event.dataTransfer.effectAllowed = event.altKey ? "copy" : "move";
             event.dataTransfer.setData("hierarchy-widget-id", widget.id);
             setDraggingWidgetId(widget.id);
           }}
@@ -192,7 +215,11 @@ export function HierarchyPanel() {
               ? dropTarget.position
               : resolveDropPosition(widget, event);
 
-            performMove(sourceWidgetId, widget.id, position);
+            if (isAltDragRef.current) {
+              performDuplicate(sourceWidgetId, widget.id, position);
+            } else {
+              performMove(sourceWidgetId, widget.id, position);
+            }
             clearDragPreview();
           }}
           onDragEnd={clearDragPreview}

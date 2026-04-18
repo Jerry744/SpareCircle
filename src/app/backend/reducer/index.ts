@@ -15,6 +15,7 @@ import { handleAddWidget, handleDeleteSelectedWidgets, handleMoveWidget, handleU
 import { handleCreateStyleToken, handleUpdateStyleToken, handleDeleteStyleToken, handleAssignWidgetStyleToken } from "./tokenReducer";
 import { handleImportAssets, handleDeleteAsset, handleAssignWidgetAsset } from "./assetReducer";
 import { handleUpsertWidgetEventBinding, handleRemoveWidgetEventBinding, handleBatchUpsertWidgetEventBinding, handleBatchRemoveWidgetEventBinding } from "./eventReducer";
+import { handlePasteClipboardSubtrees } from "./pasteReducer";
 
 const VALID_COLOR_FORMATS: ColorFormat[] = ["monochrome", "grayscale8", "rgb565", "rgb888", "argb8888"];
 
@@ -79,6 +80,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!state.interaction) return state;
       if (JSON.stringify(state.project) === JSON.stringify(state.interaction.startProject)) {
         return { ...state, interaction: null };
+      }
+      if (action.squash && state.history.past.length > 0) {
+        return { ...state, history: { ...state.history, future: [] }, interaction: null };
       }
       return {
         ...state,
@@ -165,6 +169,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         },
       };
     }
+
+    // --- Clipboard / Duplicate ---
+    case "pasteClipboardSubtrees": return handlePasteClipboardSubtrees(state, action);
 
     // --- Settings ---
     case "setColorFormat": {

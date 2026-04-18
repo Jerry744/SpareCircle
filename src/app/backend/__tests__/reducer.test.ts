@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { editorReducer } from "../reducer";
 import { createInitialProject } from "../validation";
+import { packClipboard } from "../clipboard";
 import type { AlignmentOperation, EditorState, WidgetNode } from "../types";
 
 function createState(): EditorState {
@@ -901,5 +902,142 @@ describe("canvas snap settings", () => {
     expect(next.project.canvasSnap?.snapThresholdPx).toBe(10);
     expect(next.project.canvasSnap?.pixelSnapEnabled).toBe(state.project.canvasSnap?.pixelSnapEnabled);
     expect(next.project.canvasSnap?.magnetSnapEnabled).toBe(state.project.canvasSnap?.magnetSnapEnabled);
+  });
+});
+
+describe("pasteClipboardSubtrees", () => {
+  it("pastes a single node preserving style fields and dimensions without ID conflict", () => {
+    const state = createState();
+    const btn = state.project.widgetsById.Button1;
+    expect(btn).toBeDefined();
+
+    const payload = packClipboard(state.project, ["Button1"]);
+    expect(payload).not.toBeNull();
+
+    const next = editorReducer(state, {
+      type: "pasteClipboardSubtrees",
+      payload: payload!,
+      targetParentId: state.project.screens[0].rootNodeId,
+    });
+
+    const pastedId = next.selectedWidgetIds[0];
+    expect(pastedId).toBeDefined();
+    expect(pastedId).not.toBe("Button1");
+    expect(Object.keys(next.project.widgetsById)).not.toContain("Button1" === pastedId ? "conflict" : "no-conflict");
+
+    const pasted = next.project.widgetsById[pastedId];
+    expect(pasted.type).toBe(btn.type);
+    expect(pasted.width).toBe(btn.width);
+    expect(pasted.height).toBe(btn.height);
+    expect(pasted.fill).toBe(btn.fill);
+    expect(pasted.text).toBe(btn.text);
+    expect(next.project.widgetsById.Button1).toBeDefined();
+  });
+
+  it("pastes a container subtree preserving parent/children relationships", () => {
+    const state = createState();
+    const container = state.project.widgetsById.Container1;
+    expect(container).toBeDefined();
+    expect(container.childrenIds.length).toBeGreaterThan(0);
+
+    const subtreeIds = ["Container1", ...container.childrenIds];
+    const payload = packClipboard(state.project, subtreeIds);
+    expect(payload).not.toBeNull();
+
+    const next = editorReducer(state, {
+      type: "pasteClipboardSubtrees",
+      payload: payload!,
+      targetParentId: state.project.screens[0].rootNodeId,
+    });
+
+    const pastedRootId = next.selectedWidgetIds[0];
+    const pastedRoot = next.project.widgetsById[pastedRootId];
+    expect(pastedRoot).toBeDefined();
+    expect(pastedRoot.type).toBe("Container");
+    expect(pastedRoot.childrenIds.length).toBe(container.childrenIds.length);
+
+    for (const childId of pastedRoot.childrenIds) {
+      const child = next.project.widgetsById[childId];
+      expect(child).toBeDefined();
+      expect(child.parentId).toBe(pastedRootId);
+    }
+
+    expect(next.project.widgetsById.Container1).toBeDefined();
+  });
+
+  it("consecutive pastes place each copy at the original absolute coordinates without offset", () => {
+    const state = createState();
+    const payload = packClipboard(state.project, ["Button1"]);
+    expect(payload).not.toBeNull();
+
+    const after1 = editorReducer(state, {
+      type: "pasteClipboardSubtrees",
+      payload: payload!,
+      targetParentId: state.project.screens[0].rootNodeId,
+    });
+    const id1 = after1.selectedWidgetIds[0];
+
+    const after2 = editorReducer(after1, {
+      type: "pasteClipboardSubtrees",
+      payload: payload!,
+      targetParentId: state.project.screens[0].rootNodeId,
+    });
+    const id2 = after2.selectedWidgetIds[0];
+
+    expect(id1).not.toBe(id2);
+    const copy1 = after1.project.widgetsById[id1];
+    const copy2 = after2.project.widgetsById[id2];
+    expect(copy1.x).toBe(copy2.x);
+    expect(copy1.y).toBe(copy2.y);
+  });
+
+  it("cross-screen paste: root node coordinates match original absolute coords from source screen", () => {
+    let state = createState();
+    const sourceScreen = state.project.screens[0];
+
+    const btn = state.project.widgetsById.Button1;
+    const payload = packClipboard(state.project, ["Button1"]);
+    expect(payload).not.toBeNull();
+    const sourceRoot = payload!.roots[0];
+    const sourceAbsX = sourceRoot.absX;
+    const sourceAbsY = sourceRoot.absY;
+
+    state = editorReducer(state, { type: "createScreen" });
+    const targetScreenId = state.project.activeScreenId;
+    expect(targetScreenId).not.toBe(sourceScreen.id);
+
+    const targetRootId = state.project.screens.find((s) => s.id === targetScreenId)!.rootNodeId;
+    const next = editorReducer(state, {
+      type: "pasteClipboardSubtrees",
+      payload: payload!,
+      targetParentId: targetRootId,
+    });
+
+    const pastedId = next.selectedWidgetIds[0];
+    const pasted = next.project.widgetsById[pastedId];
+    expect(pasted).toBeDefined();
+    expect(pasted.parentId).toBe(targetRootId);
+    expect(pasted.x).toBe(sourceAbsX);
+    expect(pasted.y).toBe(sourceAbsY);
+    expect(pasted.type).toBe(btn.type);
+  });
+
+  it("paste writes to history and supports undo", () => {
+    const state = createState();
+    const payload = packClipboard(state.project, ["Button1"]);
+    expect(payload).not.toBeNull();
+
+    const pasted = editorReducer(state, {
+      type: "pasteClipboardSubtrees",
+      payload: payload!,
+      targetParentId: state.project.screens[0].rootNodeId,
+    });
+
+    const pastedId = pasted.selectedWidgetIds[0];
+    expect(pasted.history.past.length).toBe(state.history.past.length + 1);
+    expect(pasted.project.widgetsById[pastedId]).toBeDefined();
+
+    const undone = editorReducer(pasted, { type: "undo" });
+    expect(undone.project.widgetsById[pastedId]).toBeUndefined();
   });
 });

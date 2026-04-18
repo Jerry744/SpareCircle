@@ -85,3 +85,28 @@ describe("HierarchyPanel multi-select", () => {
     expect(single).toBe("Button1");
   });
 });
+
+describe("HierarchyPanel duplicate actions", () => {
+  it("duplicateToTarget action is available and hierarchy panel renders without error", () => {
+    let capturedActions: ReturnType<typeof useEditorBackend>["actions"] | null = null;
+
+    function ActionCapture() {
+      const { actions } = useEditorBackend();
+      capturedActions = actions;
+      return null;
+    }
+
+    render(
+      <TestHarness>
+        <HierarchyPanel />
+        <SelectionReadout />
+        <ActionCapture />
+      </TestHarness>,
+    );
+
+    expect(capturedActions).not.toBeNull();
+    expect(typeof capturedActions!.duplicateToTarget).toBe("function");
+    // Hierarchy panel renders widget rows
+    expect(screen.getAllByText("Button1").length).toBeGreaterThan(0);
+  });
+});
