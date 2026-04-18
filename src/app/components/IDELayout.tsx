@@ -10,6 +10,7 @@ import { EditorBackendProvider } from "../backend/editorStore";
 
 export function IDELayout() {
   const [activeBottomTab, setActiveBottomTab] = useState<string>("assets");
+  const [widgetsPanelCollapsed, setWidgetsPanelCollapsed] = useState(false);
 
   useEffect(() => {
     const handleWheel = (event: WheelEvent) => {
@@ -38,9 +39,12 @@ export function IDELayout() {
             <HierarchyPanel />
           </div>
 
-          {/* Widgets Library - fixed width */}
-          <div className="w-[220px] min-w-[220px] max-w-[220px] h-full border-r border-[#1e1e1e]">
-            <WidgetsPanel />
+          {/* Widgets Library - collapsible */}
+          <div
+            className="h-full border-r border-[#1e1e1e] transition-all duration-200 overflow-hidden"
+            style={{ width: widgetsPanelCollapsed ? 36 : 220, minWidth: widgetsPanelCollapsed ? 36 : 220, maxWidth: widgetsPanelCollapsed ? 36 : 220 }}
+          >
+            <WidgetsPanel collapsed={widgetsPanelCollapsed} onToggleCollapse={() => setWidgetsPanelCollapsed(c => !c)} />
           </div>
 
           {/* Center Canvas - flexible */}

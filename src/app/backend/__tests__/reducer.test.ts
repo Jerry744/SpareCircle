@@ -1041,3 +1041,76 @@ describe("pasteClipboardSubtrees", () => {
     expect(undone.project.widgetsById[pastedId]).toBeUndefined();
   });
 });
+
+describe("moveWidget (bring-to-front / send-to-back)", () => {
+  it("sends a widget to back (index 0) within the same parent", () => {
+    const state = createState();
+    // Panel1 starts with childrenIds: ["TempLabel", "Button1"]; Button1 is at index 1
+    const panel = state.project.widgetsById.Panel1;
+    expect(panel.childrenIds[1]).toBe("Button1");
+
+    const next = editorReducer(state, {
+      type: "moveWidget",
+      widgetId: "Button1",
+      targetParentId: "Panel1",
+      targetIndex: 0,
+    });
+
+    const updatedPanel = next.project.widgetsById.Panel1;
+    expect(updatedPanel.childrenIds[0]).toBe("Button1");
+    expect(updatedPanel.childrenIds).toHaveLength(panel.childrenIds.length);
+  });
+
+  it("brings a widget to front (last index) within the same parent", () => {
+    const state = createState();
+    // TempLabel is at index 0; bring it to front (last position)
+    const panel = state.project.widgetsById.Panel1;
+    expect(panel.childrenIds[0]).toBe("TempLabel");
+
+    const next = editorReducer(state, {
+      type: "moveWidget",
+      widgetId: "TempLabel",
+      targetParentId: "Panel1",
+      targetIndex: panel.childrenIds.length,
+    });
+
+    const updatedPanel = next.project.widgetsById.Panel1;
+    expect(updatedPanel.childrenIds[updatedPanel.childrenIds.length - 1]).toBe("TempLabel");
+  });
+
+  it("records a history entry and supports undo", () => {
+    const state = createState();
+    const before = state.history.past.length;
+    // Move TempLabel (index 0) to front (last position)
+    const moved = editorReducer(state, {
+      type: "moveWidget",
+      widgetId: "TempLabel",
+      targetParentId: "Panel1",
+      targetIndex: state.project.widgetsById.Panel1.childrenIds.length,
+    });
+    expect(moved.history.past.length).toBe(before + 1);
+    const updatedPanel = moved.project.widgetsById.Panel1;
+    expect(updatedPanel.childrenIds[updatedPanel.childrenIds.length - 1]).toBe("TempLabel");
+
+    const undone = editorReducer(moved, { type: "undo" });
+    expect(undone.project.widgetsById.Panel1.childrenIds[0]).toBe("TempLabel");
+  });
+
+  it("is a no-op when the widget is already at the target position", () => {
+    const state = createState();
+    // Button1 is already at index 1 (last); moving to last is a no-op
+    const before = state.history.past.length;
+
+    const next = editorReducer(state, {
+      type: "moveWidget",
+      widgetId: "Button1",
+      targetParentId: "Panel1",
+      targetIndex: state.project.widgetsById.Panel1.childrenIds.length,
+    });
+
+    expect(next.history.past.length).toBe(before);
+    expect(next.project.widgetsById.Panel1.childrenIds).toEqual(
+      state.project.widgetsById.Panel1.childrenIds,
+    );
+  });
+});

@@ -1,7 +1,10 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EditorBackendProvider, useEditorBackend } from "../../backend/editorStore";
 import { HierarchyPanel } from "../HierarchyPanel";
+import { ContextMenu, ContextMenuTrigger } from "../ui/context-menu";
+import { CanvasContextMenuContent } from "../CanvasContextMenu";
+import { createInitialProject } from "../../backend/validation";
 
 function TestHarness({ children }: { children: React.ReactNode }) {
   return <EditorBackendProvider>{children}</EditorBackendProvider>;
@@ -108,5 +111,88 @@ describe("HierarchyPanel duplicate actions", () => {
     expect(typeof capturedActions!.duplicateToTarget).toBe("function");
     // Hierarchy panel renders widget rows
     expect(screen.getAllByText("Button1").length).toBeGreaterThan(0);
+  });
+});
+
+describe("CanvasContextMenuContent", () => {
+  it("shows insert options when no widget is targeted (blank canvas)", () => {
+    const project = createInitialProject();
+    const rootNodeId = project.screens[0].rootNodeId;
+
+    render(
+      <ContextMenu>
+        <ContextMenuTrigger>canvas-area</ContextMenuTrigger>
+        <CanvasContextMenuContent
+          data={{ targetId: null, dropParentId: rootNodeId, dropLocalX: 50, dropLocalY: 50 }}
+          project={project}
+          selectedWidgetIds={[]}
+          onAddWidget={vi.fn()}
+          onDelete={vi.fn()}
+          onCopy={vi.fn()}
+          onUpdateVisible={vi.fn()}
+          onMoveWidget={vi.fn()}
+        />
+      </ContextMenu>,
+    );
+
+    fireEvent.contextMenu(screen.getByText("canvas-area"));
+
+    expect(screen.getByText("New Button")).toBeInTheDocument();
+    expect(screen.getByText("New Label")).toBeInTheDocument();
+    expect(screen.getByText("New Container")).toBeInTheDocument();
+  });
+
+  it("shows widget operations when a selected widget is targeted", () => {
+    const project = createInitialProject();
+
+    render(
+      <ContextMenu>
+        <ContextMenuTrigger>canvas-area</ContextMenuTrigger>
+        <CanvasContextMenuContent
+          data={{ targetId: "Button1", dropParentId: "Panel1", dropLocalX: 0, dropLocalY: 0 }}
+          project={project}
+          selectedWidgetIds={["Button1"]}
+          onAddWidget={vi.fn()}
+          onDelete={vi.fn()}
+          onCopy={vi.fn()}
+          onUpdateVisible={vi.fn()}
+          onMoveWidget={vi.fn()}
+        />
+      </ContextMenu>,
+    );
+
+    fireEvent.contextMenu(screen.getByText("canvas-area"));
+
+    expect(screen.getByText("Copy")).toBeInTheDocument();
+    expect(screen.getByText("Delete")).toBeInTheDocument();
+    expect(screen.getByText("Bring to Front")).toBeInTheDocument();
+    expect(screen.getByText("Send to Back")).toBeInTheDocument();
+  });
+
+  it("calls onAddWidget with correct args when 'New Button' is clicked", () => {
+    const project = createInitialProject();
+    const rootNodeId = project.screens[0].rootNodeId;
+    const onAddWidget = vi.fn();
+
+    render(
+      <ContextMenu>
+        <ContextMenuTrigger>canvas-area</ContextMenuTrigger>
+        <CanvasContextMenuContent
+          data={{ targetId: null, dropParentId: rootNodeId, dropLocalX: 30, dropLocalY: 40 }}
+          project={project}
+          selectedWidgetIds={[]}
+          onAddWidget={onAddWidget}
+          onDelete={vi.fn()}
+          onCopy={vi.fn()}
+          onUpdateVisible={vi.fn()}
+          onMoveWidget={vi.fn()}
+        />
+      </ContextMenu>,
+    );
+
+    fireEvent.contextMenu(screen.getByText("canvas-area"));
+    fireEvent.click(screen.getByText("New Button"));
+
+    expect(onAddWidget).toHaveBeenCalledWith(rootNodeId, "Button", 30, 40);
   });
 });

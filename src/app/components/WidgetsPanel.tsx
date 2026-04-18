@@ -1,7 +1,7 @@
-import { 
-  Square, 
-  Type, 
-  ToggleRight, 
+import {
+  Square,
+  Type,
+  ToggleRight,
   Circle,
   Image as ImageIcon,
   List,
@@ -12,7 +12,9 @@ import {
   CheckSquare,
   Sliders,
   Menu,
-  Grid3x3
+  Grid3x3,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { mapPaletteWidgetToType } from "../backend/editorStore";
 
@@ -42,49 +44,100 @@ const widgets: Widget[] = [
   { id: "list", name: "List", icon: List, category: "Display" },
 ];
 
-export function WidgetsPanel() {
+interface WidgetsPanelProps {
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+}
+
+export function WidgetsPanel({ collapsed = false, onToggleCollapse }: WidgetsPanelProps) {
   const categories = Array.from(new Set(widgets.map((w) => w.category)));
 
   return (
     <div className="h-full bg-[#2c2c2c] border-r border-[#1e1e1e] flex flex-col">
-      <div className="h-10 flex items-center px-3 border-b border-[#1e1e1e]">
-        <span className="text-xs font-semibold text-gray-400">WIDGETS</span>
+      {/* Header */}
+      <div className="h-10 flex items-center border-b border-[#1e1e1e] shrink-0" style={{ justifyContent: collapsed ? "center" : "space-between", padding: collapsed ? "0" : "0 8px 0 12px" }}>
+        {!collapsed && (
+          <span className="text-xs font-semibold text-gray-400">WIDGETS</span>
+        )}
+        <button
+          onClick={onToggleCollapse}
+          className="flex items-center justify-center w-6 h-6 rounded text-gray-500 hover:text-gray-200 hover:bg-[#3c3c3c] transition-colors"
+          title={collapsed ? "Expand widgets panel" : "Collapse widgets panel"}
+        >
+          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
-        {categories.map((category) => (
-          <div key={category} className="mb-4">
-            <div className="text-xs text-gray-500 mb-2 px-1 font-semibold">{category}</div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {widgets
-                .filter((w) => w.category === category)
-                .map((widget) => {
-                  const supported = mapPaletteWidgetToType(widget.id) !== null;
-                  return (
-                  <div
-                    key={widget.id}
-                    className={`p-2 rounded flex flex-col items-center gap-1 transition-colors border ${
-                      supported
-                        ? "bg-[#252525] hover:bg-[#3c3c3c] cursor-pointer border-transparent hover:border-[#5b9dd9]/30"
-                        : "bg-[#212121] cursor-not-allowed border-[#2a2a2a] opacity-45"
-                    }`}
-                    draggable={supported}
-                    onDragStart={(e) => {
-                      if (!supported) {
-                        e.preventDefault();
-                        return;
-                      }
-                      e.dataTransfer.setData("widget", widget.id);
-                    }}
-                    title={supported ? widget.name : `${widget.name} (Demo2 暂不支持)`}
-                  >
-                    <widget.icon size={18} className="text-gray-400" />
-                    <span className="text-xs text-center text-gray-300">{widget.name}</span>
-                  </div>
-                  );
-                })}
-            </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto" style={{ padding: collapsed ? "8px 0" : "8px" }}>
+        {collapsed ? (
+          /* Collapsed: icon-only, grouped by category with dividers */
+          <div className="flex flex-col items-center">
+            {categories.map((category, catIndex) => (
+              <div key={category} className="flex flex-col items-center w-full">
+                {catIndex > 0 && (
+                  <div className="w-full border-t border-[#1e1e1e] my-2" />
+                )}
+                {widgets
+                  .filter((w) => w.category === category)
+                  .map((widget) => {
+                    const supported = mapPaletteWidgetToType(widget.id) !== null;
+                    return (
+                      <div
+                        key={widget.id}
+                        className={`flex items-center justify-center w-full py-1 transition-colors ${
+                          supported
+                            ? "hover:text-gray-100 cursor-pointer"
+                            : "cursor-not-allowed opacity-40"
+                        }`}
+                        draggable={supported}
+                        onDragStart={(e) => {
+                          if (!supported) { e.preventDefault(); return; }
+                          e.dataTransfer.setData("widget", widget.id);
+                        }}
+                        title={supported ? widget.name : `${widget.name} (Demo2 暂不支持)`}
+                      >
+                        <widget.icon size={18} className={supported ? "text-gray-400 hover:text-gray-200" : "text-gray-600"} />
+                      </div>
+                    );
+                  })}
+              </div>
+            ))}
           </div>
-        ))}
+        ) : (
+          /* Expanded: 2-column grid with category labels and names */
+          categories.map((category) => (
+            <div key={category} className="mb-4">
+              <div className="text-xs text-gray-500 mb-2 px-1 font-semibold">{category}</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {widgets
+                  .filter((w) => w.category === category)
+                  .map((widget) => {
+                    const supported = mapPaletteWidgetToType(widget.id) !== null;
+                    return (
+                      <div
+                        key={widget.id}
+                        className={`p-2 rounded flex flex-col items-center gap-1 transition-colors border ${
+                          supported
+                            ? "bg-[#252525] hover:bg-[#3c3c3c] cursor-pointer border-transparent hover:border-[#5b9dd9]/30"
+                            : "bg-[#212121] cursor-not-allowed border-[#2a2a2a] opacity-45"
+                        }`}
+                        draggable={supported}
+                        onDragStart={(e) => {
+                          if (!supported) { e.preventDefault(); return; }
+                          e.dataTransfer.setData("widget", widget.id);
+                        }}
+                        title={supported ? widget.name : `${widget.name} (Demo2 暂不支持)`}
+                      >
+                        <widget.icon size={18} className="text-gray-400" />
+                        <span className="text-xs text-center text-gray-300">{widget.name}</span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

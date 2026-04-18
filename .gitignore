@@ -21,5 +21,9 @@ pnpm-debug.log*
 .vscode/
 .idea/
 
+# Local guidance docs and workspace skills
+/guidelines/
+/.github/skills/
+
 # TypeScript cache
 *.tsbuildinfo

@@ -13,6 +13,8 @@ import {
 } from "../backend/editorStore";
 import { collectSnapGuides } from "../backend/interaction";
 import { resolveWidgetColor } from "../backend/validation";
+import { ContextMenu, ContextMenuTrigger } from "./ui/context-menu";
+import { CanvasContextMenuContent, type ContextMenuData } from "./CanvasContextMenu";
 
 interface Camera {
   x: number;
@@ -75,6 +77,8 @@ export function CanvasViewport() {
   const isAltDupDragRef = useRef(false);
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
+  const [contextMenuData, setContextMenuData] = useState<ContextMenuData | null>(null);
+
   const {
     state: {
       project,
@@ -93,6 +97,8 @@ export function CanvasViewport() {
       copySelectionToClipboard,
       pasteFromClipboard,
       duplicateWidgets,
+      moveWidget,
+      batchUpdateWidgetProperty,
     },
   } = useEditorBackend();
 
@@ -489,6 +495,19 @@ export function CanvasViewport() {
     const localY = Math.round(world.y - parentInfo.absY);
 
     addWidget(parentInfo.widget.id, widgetType, localX, localY);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (dragStateRef.current || marqueeRef.current) return;
+    const world = screenToWorldRef(e.clientX, e.clientY);
+    const hit = getHitTarget(world);
+    const dropContainer = getDropContainer(world);
+    setContextMenuData({
+      targetId: hit?.widget.id ?? null,
+      dropParentId: dropContainer?.widget.id ?? activeScreen.rootNodeId,
+      dropLocalX: Math.round(world.x - (dropContainer?.absX ?? 0)),
+      dropLocalY: Math.round(world.y - (dropContainer?.absY ?? 0)),
+    });
   };
 
   // 渲染画布
@@ -1064,30 +1083,45 @@ export function CanvasViewport() {
       </div>
 
       {/* Canvas Area */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-hidden relative"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={handleCanvasDrop}
-      >
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0"
-          onDoubleClick={(event) => {
-            const world = screenToWorldRef(event.clientX, event.clientY);
-            const target = getHitTarget(world);
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            ref={containerRef}
+            className="flex-1 overflow-hidden relative"
+            onContextMenu={handleContextMenu}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onWheel={handleWheel}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleCanvasDrop}
+          >
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0"
+              onDoubleClick={(event) => {
+                const world = screenToWorldRef(event.clientX, event.clientY);
+                const target = getHitTarget(world);
 
-            if (target) {
-              selectWidget(target.widget.id, false);
-            }
-          }}
+                if (target) {
+                  selectWidget(target.widget.id, false);
+                }
+              }}
+            />
+          </div>
+        </ContextMenuTrigger>
+        <CanvasContextMenuContent
+          data={contextMenuData}
+          project={project}
+          selectedWidgetIds={selectedWidgetIds}
+          onAddWidget={addWidget}
+          onDelete={deleteSelectedWidgets}
+          onCopy={copySelectionToClipboard}
+          onUpdateVisible={(ids, v) => batchUpdateWidgetProperty(ids, "visible", v)}
+          onMoveWidget={moveWidget}
         />
-      </div>
+      </ContextMenu>
     </div>
   );
 }
