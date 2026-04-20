@@ -14,10 +14,14 @@ import {
   Palette,
   Magnet,
   Grid2x2,
+  PanelLeft,
+  PanelRight,
+  PanelBottom,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useEditorBackend } from "../backend/editorStore";
 import { StyleTokensDialog } from "./StyleTokensDialog";
+import { useLayout } from "./layoutContext";
 
 export function TopToolbar() {
   const [importError, setImportError] = useState<string | null>(null);
@@ -32,6 +36,8 @@ export function TopToolbar() {
     },
     actions: { undo, redo, serializeProject, hydrateProject, exportLvglC, setCanvasSnapSettings },
   } = useEditorBackend();
+
+  const layout = useLayout();
 
   const pixelSnapEnabled = project.canvasSnap?.pixelSnapEnabled ?? false;
   const magnetSnapEnabled = project.canvasSnap?.magnetSnapEnabled ?? true;
@@ -119,8 +125,8 @@ export function TopToolbar() {
 
   return (
     <div className="h-12 bg-neutral-700 border-b border-neutral-900 flex items-center justify-between px-3 relative">
-      {/* Left Section - Project Info */}
-      <div className="flex items-center gap-4">
+      {/* Left Section - Project Info + Panel Toggles */}
+      <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-br from-highlight-500 to-highlight-300 rounded flex items-center justify-center font-bold text-sm text-white">
             LV
@@ -129,6 +135,50 @@ export function TopToolbar() {
         </div>
         <div className="h-6 w-px bg-neutral-600" />
         <span className="text-sm text-neutral-300">smart_thermostat.lvproj</span>
+        <div className="h-6 w-px bg-neutral-600" />
+
+        {/* Panel Toggle Buttons */}
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={layout.toggleLeftSidebar}
+            title={layout.leftSidebarCollapsed ? "Show Left Panel" : "Hide Left Panel"}
+            aria-label={layout.leftSidebarCollapsed ? "Show Left Panel" : "Hide Left Panel"}
+            aria-pressed={!layout.leftSidebarCollapsed}
+            className={`p-1.5 rounded flex items-center justify-center transition-colors ${
+              !layout.leftSidebarCollapsed
+                ? "bg-highlight-500/20 text-highlight-400"
+                : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-600"
+            }`}
+          >
+            <PanelLeft size={16} />
+          </button>
+          <button
+            onClick={layout.toggleBottomPanel}
+            title={layout.bottomPanelCollapsed ? "Show Bottom Panel" : "Hide Bottom Panel"}
+            aria-label={layout.bottomPanelCollapsed ? "Show Bottom Panel" : "Hide Bottom Panel"}
+            aria-pressed={!layout.bottomPanelCollapsed}
+            className={`p-1.5 rounded flex items-center justify-center transition-colors ${
+              !layout.bottomPanelCollapsed
+                ? "bg-highlight-500/20 text-highlight-400"
+                : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-600"
+            }`}
+          >
+            <PanelBottom size={16} />
+          </button>
+          <button
+            onClick={layout.toggleRightSidebar}
+            title={layout.rightSidebarCollapsed ? "Show Right Panel" : "Hide Right Panel"}
+            aria-label={layout.rightSidebarCollapsed ? "Show Right Panel" : "Hide Right Panel"}
+            aria-pressed={!layout.rightSidebarCollapsed}
+            className={`p-1.5 rounded flex items-center justify-center transition-colors ${
+              !layout.rightSidebarCollapsed
+                ? "bg-highlight-500/20 text-highlight-400"
+                : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-600"
+            }`}
+          >
+            <PanelRight size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Center Section - Main Actions */}

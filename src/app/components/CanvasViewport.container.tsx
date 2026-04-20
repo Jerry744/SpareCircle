@@ -137,21 +137,30 @@ export function CanvasViewport() {
   }, [clearSelection, rootTree, selectedWidgetIds, setSelection]);
 
   useEffect(() => {
-    const updateSize = () => {
-      const canvas = canvasRef.current;
-      const container = containerRef.current;
-      if (!canvas || !container) {
-        return;
-      }
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) {
+      return;
+    }
 
+    const updateSize = () => {
       canvas.width = container.clientWidth;
       canvas.height = container.clientHeight;
       render();
     };
 
     updateSize();
+
+    const observer = new ResizeObserver(() => {
+      updateSize();
+    });
+    observer.observe(container);
+
     window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateSize);
+    };
   }, [render]);
 
   useEffect(() => {

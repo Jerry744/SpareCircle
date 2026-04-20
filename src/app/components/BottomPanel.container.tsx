@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AssetsPanel } from "./bottomPanel/AssetsPanel";
 import { ComponentsPanel } from "./bottomPanel/ComponentsPanel";
 import { BOTTOM_PANEL_TABS } from "./bottomPanel/config";
@@ -5,11 +6,6 @@ import { EventsPanel } from "./bottomPanel/EventsPanel";
 import { ExportPanel } from "./bottomPanel/ExportPanel";
 import { SettingsPanel } from "./bottomPanel/SettingsPanel";
 import { ThemesPanel } from "./bottomPanel/ThemesPanel";
-
-interface BottomPanelProps {
-  activeTab: string;
-  onTabChange: (tab: string) => void;
-}
 
 function BottomPanelContent({ activeTab }: { activeTab: string }) {
   if (activeTab === "assets") {
@@ -33,14 +29,16 @@ function BottomPanelContent({ activeTab }: { activeTab: string }) {
   return null;
 }
 
-export function BottomPanel({ activeTab, onTabChange }: BottomPanelProps) {
+export function BottomPanel() {
+  const [activeTab, setActiveTab] = useState<string>("assets");
+
   return (
-    <div className="h-56 bg-neutral-700 border-t border-neutral-900 flex flex-col">
+    <div className="h-full bg-neutral-700 flex flex-col">
       <div className="flex items-center gap-1 px-2 pt-1 border-b border-neutral-900">
         {BOTTOM_PANEL_TABS.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => onTabChange(tab.id)}
+            onClick={() => setActiveTab(tab.id)}
             className={`px-3 py-2 flex items-center gap-2 text-sm border-b-2 transition-colors ${
               activeTab === tab.id
                 ? "border-highlight-500 text-neutral-100"
