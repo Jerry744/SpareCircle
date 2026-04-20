@@ -189,6 +189,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       };
       return commitProjectChange(state, { ...state.project, canvasSnap: next });
     }
+    case "setProjectName": {
+      const rawName = action.projectName;
+      if (typeof rawName !== "string") return state;
+      const projectName = rawName.trim();
+      if (!projectName) return state;
+      if (projectName === state.project.projectName) return state;
+      return commitProjectChange(state, { ...state.project, projectName });
+    }
 
     default:
       return state;

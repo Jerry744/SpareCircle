@@ -905,6 +905,26 @@ describe("canvas snap settings", () => {
   });
 });
 
+describe("project naming", () => {
+  it("setProjectName updates project name and writes to history", () => {
+    const state = createState();
+    const before = state.history.past.length;
+
+    const next = editorReducer(state, { type: "setProjectName", projectName: "living_room_hmi.lvproj" });
+
+    expect(next.project.projectName).toBe("living_room_hmi.lvproj");
+    expect(next.history.past.length).toBe(before + 1);
+  });
+
+  it("setProjectName ignores empty names", () => {
+    const state = createState();
+
+    const next = editorReducer(state, { type: "setProjectName", projectName: "   " });
+
+    expect(next).toBe(state);
+  });
+});
+
 describe("pasteClipboardSubtrees", () => {
   it("pastes a single node preserving style fields and dimensions without ID conflict", () => {
     const state = createState();

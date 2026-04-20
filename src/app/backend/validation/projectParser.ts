@@ -1,6 +1,7 @@
 import {
   KNOWN_WIDGET_EVENTS,
   DEFAULT_CANVAS_SNAP,
+  DEFAULT_PROJECT_NAME,
   type CanvasSnapSettings,
   type ProjectSnapshot,
   type ScreenMeta,
@@ -83,6 +84,9 @@ function parseNormalizedProject(
   if (!isRecord(input)) return { ok: false, error: "Project must be an object" };
 
   const { screens, activeScreenId, widgetsById } = input;
+  const projectName = typeof input.projectName === "string" && input.projectName.trim().length > 0
+    ? input.projectName.trim()
+    : DEFAULT_PROJECT_NAME;
   const schemaVersionResult = parseSchemaVersion(input.schemaVersion);
   if (!schemaVersionResult.ok) return schemaVersionResult;
 
@@ -184,6 +188,7 @@ function parseNormalizedProject(
     ok: true,
     project: {
       schemaVersion: schemaVersionResult.schemaVersion,
+      projectName,
       screens: parsedScreens,
       activeScreenId,
       widgetsById: parsedWidgets,
@@ -249,6 +254,7 @@ function parseLegacyProject(
     ok: true,
     project: {
       schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
+      projectName: DEFAULT_PROJECT_NAME,
       screens,
       activeScreenId,
       widgetsById,
@@ -370,6 +376,7 @@ export function createInitialProject(): ProjectSnapshot {
 
   return {
     schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
+    projectName: DEFAULT_PROJECT_NAME,
     activeScreenId: "screen-1",
     screens: [
       {

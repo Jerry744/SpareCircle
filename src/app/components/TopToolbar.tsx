@@ -28,13 +28,15 @@ export function TopToolbar() {
   const [importWarning, setImportWarning] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [tokensOpen, setTokensOpen] = useState(false);
+  const [isEditingProjectName, setIsEditingProjectName] = useState(false);
+  const [projectNameInput, setProjectNameInput] = useState("");
   const {
     state: {
       history,
       interaction,
       project,
     },
-    actions: { undo, redo, serializeProject, hydrateProject, exportLvglC, setCanvasSnapSettings },
+    actions: { undo, redo, serializeProject, hydrateProject, exportLvglC, setCanvasSnapSettings, setProjectName },
   } = useEditorBackend();
 
   const layout = useLayout();
@@ -44,6 +46,12 @@ export function TopToolbar() {
 
   const canUndo = history.past.length > 0 && !interaction;
   const canRedo = history.future.length > 0 && !interaction;
+
+  useEffect(() => {
+    if (!isEditingProjectName) {
+      setProjectNameInput(project.projectName);
+    }
+  }, [project.projectName, isEditingProjectName]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -84,13 +92,20 @@ export function TopToolbar() {
 
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "sparecircle-project.json";
+    const normalizedFileName = project.projectName.trim() || "sparecircle-project";
+    anchor.download = normalizedFileName.endsWith(".json") ? normalizedFileName : `${normalizedFileName}.json`;
     anchor.click();
 
     URL.revokeObjectURL(url);
     setImportError(null);
     setImportWarning(null);
     setExportError(null);
+  };
+
+  const commitProjectName = () => {
+    const nextName = projectNameInput.trim();
+    setProjectName(nextName || project.projectName);
+    setIsEditingProjectName(false);
   };
 
   const handleOpen = () => {
@@ -128,13 +143,41 @@ export function TopToolbar() {
       {/* Left Section - Project Info + Panel Toggles */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-highlight-500 to-highlight-300 rounded flex items-center justify-center font-bold text-sm text-white">
-            LV
-          </div>
-          <span className="font-semibold text-neutral-100">LVGL Designer</span>
+
+          <span className="font-semibold text-neutral-100">SpareCircle</span>
         </div>
         <div className="h-6 w-px bg-neutral-600" />
-        <span className="text-sm text-neutral-300">smart_thermostat.lvproj</span>
+        {isEditingProjectName ? (
+          <input
+            value={projectNameInput}
+            autoFocus
+            onChange={(event) => setProjectNameInput(event.target.value)}
+            onBlur={commitProjectName}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitProjectName();
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setProjectNameInput(project.projectName);
+                setIsEditingProjectName(false);
+              }
+            }}
+            className="text-sm text-neutral-100 bg-neutral-800 border border-neutral-500 rounded px-2 py-0.5 min-w-[220px]"
+            aria-label="Project name"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsEditingProjectName(true)}
+            className="text-sm text-neutral-300 hover:text-neutral-100 transition-colors"
+            title="Rename project"
+          >
+            {project.projectName}
+          </button>
+        )}
         <div className="h-6 w-px bg-neutral-600" />
 
         {/* Panel Toggle Buttons */}

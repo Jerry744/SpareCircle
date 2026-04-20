@@ -24,6 +24,7 @@ pnpm-debug.log*
 # Local guidance docs and workspace skills
 /guidelines/
 /.github/skills/
+/.codex/
 
 # TypeScript cache
 *.tsbuildinfo

@@ -215,6 +215,7 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "updateScreenMeta", screenId, key, value }),
       setColorFormat: (format: ColorFormat) => dispatch({ type: "setColorFormat", format }),
       setCanvasSnapSettings: (settings: Partial<CanvasSnapSettings>) => dispatch({ type: "setCanvasSnapSettings", settings }),
+      setProjectName: (projectName: string) => dispatch({ type: "setProjectName", projectName }),
       copySelectionToClipboard: () => {
         if (state.selectedWidgetIds.length === 0) return;
         clipboardRef.current = packClipboard(state.project, state.selectedWidgetIds);

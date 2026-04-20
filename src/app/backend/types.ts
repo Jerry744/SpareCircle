@@ -104,8 +104,11 @@ export const DEFAULT_CANVAS_SNAP: CanvasSnapSettings = {
   snapThresholdPx: 6,
 };
 
+export const DEFAULT_PROJECT_NAME = "smart_thermostat.lvproj";
+
 export interface ProjectSnapshot {
   schemaVersion: number;
+  projectName: string;
   screens: ScreenModel[];
   activeScreenId: string;
   widgetsById: Record<string, WidgetNode>;
@@ -186,6 +189,7 @@ export interface EditorBackendValue {
     updateScreenMeta: (screenId: string, key: "width" | "height" | "fill", value: EditableWidgetPropertyValue) => void;
     setColorFormat: (format: ColorFormat) => void;
     setCanvasSnapSettings: (settings: Partial<CanvasSnapSettings>) => void;
+    setProjectName: (projectName: string) => void;
     copySelectionToClipboard: () => void;
     pasteFromClipboard: () => void;
     duplicateWidgets: (sourceIds: string[]) => string[];
