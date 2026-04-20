@@ -2,9 +2,14 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { EditorBackendProvider, useEditorBackend } from "../../backend/editorStore";
 import { TopToolbar } from "../TopToolbar";
+import { LayoutProvider } from "../layoutContext";
 
 function TestHarness({ children }: { children: React.ReactNode }) {
-  return <EditorBackendProvider>{children}</EditorBackendProvider>;
+  return (
+    <EditorBackendProvider>
+      <LayoutProvider>{children}</LayoutProvider>
+    </EditorBackendProvider>
+  );
 }
 
 function SnapReadout() {
