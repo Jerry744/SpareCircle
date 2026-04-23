@@ -21,8 +21,10 @@ pnpm-debug.log*
 .vscode/
 .idea/
 
-# Local guidance docs and workspace skills
+# Local workspace skills
+/dev-plan/
 /guidelines/
+
 /.github/skills/
 /.codex/
 
