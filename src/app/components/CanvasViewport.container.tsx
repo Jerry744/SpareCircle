@@ -1,24 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildWidgetTree,
-  flattenWidgetTree,
   getActiveScreenFromProject,
   mapPaletteWidgetToType,
   useEditorBackend,
-  type Point,
 } from "../backend/editorStore";
 import { collectSnapGuides } from "../backend/interaction";
 import { CanvasContextMenuContent, type ContextMenuData } from "./CanvasContextMenu";
 import { ContextMenu, ContextMenuTrigger } from "./ui/context-menu";
 import { CanvasViewportToolbar } from "./canvasViewport/CanvasViewportToolbar";
 import { renderCanvas } from "./canvasViewport/render";
-import type { Camera, DragState, MarqueeState, SafariGestureEvent } from "./canvasViewport/types";
+import type { Camera, DragState, MarqueeState } from "./canvasViewport/types";
 import {
   filterTopLevelIds,
   getDropContainer,
   getHitTarget,
   screenToWorldForCamera,
 } from "./canvasViewport/utils";
+import { computeMarqueeHits } from "./canvasViewport/marquee";
+import { useCanvasResize } from "./canvasViewport/useCanvasResize";
+import { useCanvasGestures } from "./canvasViewport/useCanvasGestures";
+import { useCanvasKeyboardShortcuts } from "./canvasViewport/useCanvasKeyboardShortcuts";
+import { useCanvasWheel } from "./canvasViewport/useCanvasWheel";
 
 export function CanvasViewport() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -32,9 +35,6 @@ export function CanvasViewport() {
   const cameraRef = useRef(camera);
   const marqueeRef = useRef<MarqueeState | null>(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
-  const zoomAnchorWorld = useRef<Point | null>(null);
-  const zoomTimeoutRef = useRef<number | null>(null);
-  const lastGestureScaleRef = useRef<number | null>(null);
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const dragStateRef = useRef<DragState | null>(null);
   const snapGuidesRef = useRef<{ xGuides: number[]; yGuides: number[] } | null>(null);
@@ -94,37 +94,7 @@ export function CanvasViewport() {
     marqueeRef.current = null;
     setMarquee(null);
 
-    if (!rootTree) {
-      return;
-    }
-
-    const allWidgets = flattenWidgetTree(rootTree);
-    const dx = current.currentWorld.x - current.startWorld.x;
-    const dy = current.currentWorld.y - current.startWorld.y;
-    const minX = Math.min(current.startWorld.x, current.currentWorld.x);
-    const maxX = Math.max(current.startWorld.x, current.currentWorld.x);
-    const minY = Math.min(current.startWorld.y, current.currentWorld.y);
-    const maxY = Math.max(current.startWorld.y, current.currentWorld.y);
-    const useContains = dx >= 0 && dy >= 0;
-
-    const hitIds: string[] = [];
-    for (const item of allWidgets) {
-      if (item.widget.type === "Screen" || item.widget.visible === false) {
-        continue;
-      }
-
-      const wL = item.absX;
-      const wR = item.absX + item.widget.width;
-      const wT = item.absY;
-      const wB = item.absY + item.widget.height;
-      if (useContains) {
-        if (wL >= minX && wR <= maxX && wT >= minY && wB <= maxY) {
-          hitIds.push(item.widget.id);
-        }
-      } else if (wL < maxX && wR > minX && wT < maxY && wB > minY) {
-        hitIds.push(item.widget.id);
-      }
-    }
+    const hitIds = computeMarqueeHits(rootTree, current.startWorld, current.currentWorld);
 
     if (hitIds.length > 0) {
       setSelection(current.additive ? [...new Set([...selectedWidgetIds, ...hitIds])] : hitIds);
@@ -136,187 +106,26 @@ export function CanvasViewport() {
     }
   }, [clearSelection, rootTree, selectedWidgetIds, setSelection]);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) {
-      return;
-    }
-
-    const updateSize = () => {
-      canvas.width = container.clientWidth;
-      canvas.height = container.clientHeight;
-      render();
-    };
-
-    updateSize();
-
-    const observer = new ResizeObserver(() => {
-      updateSize();
-    });
-    observer.observe(container);
-
-    window.addEventListener("resize", updateSize);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", updateSize);
-    };
-  }, [render]);
+  useCanvasResize(canvasRef, containerRef, render);
 
   useEffect(() => {
     render();
   }, [render]);
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
+  useCanvasGestures(containerRef, canvasRef, setCamera, screenToWorldRef);
 
-    const getAnchorWorldFromGesture = (event: SafariGestureEvent) => {
-      const canvas = canvasRef.current;
-      if (!canvas) {
-        return { x: 0, y: 0 };
-      }
-
-      const rect = canvas.getBoundingClientRect();
-      const clientX = Number.isFinite(event.clientX) ? event.clientX : rect.left + rect.width / 2;
-      const clientY = Number.isFinite(event.clientY) ? event.clientY : rect.top + rect.height / 2;
-      return screenToWorldRef(clientX, clientY);
-    };
-
-    const handleNativeWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) {
-        event.preventDefault();
-      }
-    };
-
-    const handleGestureStart = (event: Event) => {
-      const gesture = event as SafariGestureEvent;
-      gesture.preventDefault();
-      lastGestureScaleRef.current = gesture.scale;
-      zoomAnchorWorld.current = getAnchorWorldFromGesture(gesture);
-    };
-
-    const handleGestureChange = (event: Event) => {
-      const gesture = event as SafariGestureEvent;
-      gesture.preventDefault();
-
-      const previousScale = lastGestureScaleRef.current ?? gesture.scale;
-      if (!Number.isFinite(previousScale) || !Number.isFinite(gesture.scale) || previousScale === 0) {
-        lastGestureScaleRef.current = gesture.scale;
-        return;
-      }
-
-      const ratio = gesture.scale / previousScale;
-      const anchor = zoomAnchorWorld.current ?? getAnchorWorldFromGesture(gesture);
-      setCamera((prev) => {
-        const newZoom = Math.max(0.1, Math.min(5, prev.zoom * ratio));
-        return {
-          x: (anchor.x + prev.x) * prev.zoom / newZoom - anchor.x,
-          y: (anchor.y + prev.y) * prev.zoom / newZoom - anchor.y,
-          zoom: newZoom,
-        };
-      });
-
-      lastGestureScaleRef.current = gesture.scale;
-    };
-
-    const handleGestureEnd = (event: Event) => {
-      const gesture = event as SafariGestureEvent;
-      gesture.preventDefault();
-      lastGestureScaleRef.current = null;
-      zoomAnchorWorld.current = null;
-    };
-
-    container.addEventListener("wheel", handleNativeWheel, { passive: false });
-    container.addEventListener("gesturestart", handleGestureStart, { passive: false });
-    container.addEventListener("gesturechange", handleGestureChange, { passive: false });
-    container.addEventListener("gestureend", handleGestureEnd, { passive: false });
-
-    return () => {
-      container.removeEventListener("wheel", handleNativeWheel);
-      container.removeEventListener("gesturestart", handleGestureStart);
-      container.removeEventListener("gesturechange", handleGestureChange);
-      container.removeEventListener("gestureend", handleGestureEnd);
-    };
-  }, [screenToWorldRef]);
-
-  useEffect(() => {
-    const isEditableTarget = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) {
-        return false;
-      }
-
-      return Boolean(target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']"));
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (isEditableTarget(event.target)) {
-        return;
-      }
-
-      if (event.key === "Delete" || event.key === "Backspace") {
-        if (selectedWidgetIds.length === 0) {
-          return;
-        }
-        event.preventDefault();
-        deleteSelectedWidgets();
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
-        event.preventDefault();
-        copySelectionToClipboard();
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
-        event.preventDefault();
-        pasteFromClipboard();
-        return;
-      }
-
-      if (event.code === "Space" && !isSpacePressed) {
-        event.preventDefault();
-        setIsSpacePressed(true);
-        if (containerRef.current) {
-          containerRef.current.style.cursor = "grab";
-        }
-        return;
-      }
-
-      if (event.code === "Escape" && dragStateRef.current) {
-        cancelInteraction();
-        dragStateRef.current = null;
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.code === "Space" && isSpacePressed) {
-        event.preventDefault();
-        setIsSpacePressed(false);
-        setIsPanning(false);
-        if (containerRef.current) {
-          containerRef.current.style.cursor = "default";
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, [
-    cancelInteraction,
-    copySelectionToClipboard,
-    deleteSelectedWidgets,
+  useCanvasKeyboardShortcuts({
+    containerRef,
+    dragStateRef,
     isSpacePressed,
-    pasteFromClipboard,
+    setIsSpacePressed,
+    setIsPanning,
     selectedWidgetIds,
-  ]);
+    deleteSelectedWidgets,
+    copySelectionToClipboard,
+    pasteFromClipboard,
+    cancelInteraction,
+  });
 
   const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -515,44 +324,7 @@ export function CanvasViewport() {
     }
   };
 
-  const handleWheel = (event: React.WheelEvent) => {
-    event.preventDefault();
-
-    if (!event.ctrlKey) {
-      if (zoomTimeoutRef.current) {
-        clearTimeout(zoomTimeoutRef.current);
-        zoomTimeoutRef.current = null;
-      }
-      zoomAnchorWorld.current = null;
-      setCamera((prev) => ({
-        ...prev,
-        x: prev.x - event.deltaX / prev.zoom,
-        y: prev.y - event.deltaY / prev.zoom,
-      }));
-      return;
-    }
-
-    if (!zoomAnchorWorld.current) {
-      zoomAnchorWorld.current = screenToWorldRef(event.clientX, event.clientY);
-    }
-    if (zoomTimeoutRef.current) {
-      clearTimeout(zoomTimeoutRef.current);
-    }
-    zoomTimeoutRef.current = window.setTimeout(() => {
-      zoomAnchorWorld.current = null;
-    }, 150);
-
-    const anchor = zoomAnchorWorld.current;
-    const delta = -event.deltaY * 0.001;
-    setCamera((prev) => {
-      const newZoom = Math.max(0.1, Math.min(5, prev.zoom * (1 + delta)));
-      return {
-        x: (anchor.x + prev.x) * prev.zoom / newZoom - anchor.x,
-        y: (anchor.y + prev.y) * prev.zoom / newZoom - anchor.y,
-        zoom: newZoom,
-      };
-    });
-  };
+  const handleWheel = useCanvasWheel(setCamera, screenToWorldRef);
 
   return (
     <div className="h-full bg-neutral-900 flex flex-col">
