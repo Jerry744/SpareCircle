@@ -21,6 +21,32 @@ export function pickFallbackCanonical(
   );
 }
 
+export function reassignCanonicalAfterMutation(
+  board: StateBoard,
+  variants: Variant[],
+): { canonicalVariantId: string; warning?: string } {
+  const existing = variants.find(
+    (item) => item.id === board.canonicalVariantId && item.status !== "archived",
+  );
+  if (existing) return { canonicalVariantId: existing.id };
+
+  const active = variants.find((item) => item.status !== "archived");
+  if (active) {
+    return {
+      canonicalVariantId: active.id,
+      warning: "Canonical Variant was reassigned to the first non-archived Variant.",
+    };
+  }
+
+  const fallback = variants[0];
+  return fallback
+    ? {
+        canonicalVariantId: fallback.id,
+        warning: "No non-archived Variant remains; Canonical points to an archived Variant.",
+      }
+    : { canonicalVariantId: board.canonicalVariantId, warning: "No Variant remains on this StateBoard." };
+}
+
 export function ensureCanonicalInvariant(
   project: ProjectSnapshotV2,
   boardId: string,
