@@ -1,5 +1,4 @@
 import type { Variant } from "../../backend/types/variant";
-import { VariantMeta } from "./VariantMeta";
 
 export interface VariantTabsProps {
   variants: Variant[];
@@ -17,23 +16,21 @@ export function VariantTabs({
   onSetCanonical,
 }: VariantTabsProps): JSX.Element {
   return (
-    <div className="flex items-center gap-2 overflow-x-auto border-b border-neutral-800 bg-neutral-850 px-3 py-2">
+    <div className="inline-flex max-w-[420px] items-center gap-2 overflow-x-auto rounded border border-neutral-700 bg-neutral-900/90 p-2 shadow-lg ring-1 ring-neutral-500/30">
       {variants.map((variant) => {
         const isActive = variant.id === activeVariantId;
-        const isCanonical = variant.id === canonicalVariantId;
         return (
           <button
             key={variant.id}
             type="button"
             onClick={() => onSelect(variant.id)}
-            className={`flex items-center gap-2 rounded border px-3 py-1.5 text-xs transition-colors ${
+            className={`flex shrink-0 items-center gap-2 rounded border px-3 py-1.5 text-xs transition-colors ${
               isActive
                 ? "border-highlight-500 bg-highlight-500/15 text-neutral-100"
                 : "border-neutral-700 bg-neutral-800 text-neutral-300 hover:text-neutral-100"
             }`}
           >
             <span>{variant.name}</span>
-            <VariantMeta isCanonical={isCanonical} statusLabel={variant.status} />
           </button>
         );
       })}

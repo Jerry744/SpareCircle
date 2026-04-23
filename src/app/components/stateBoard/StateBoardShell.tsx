@@ -40,17 +40,19 @@ export function StateBoardShell({
   return (
     <section className="flex h-full w-full flex-col bg-neutral-900">
       <StateBoardHeader items={breadcrumbItems} onClose={onGoToMap} />
-      <VariantTabs
-        variants={variants}
-        activeVariantId={resolved.variant.id}
-        canonicalVariantId={resolved.board.canonicalVariantId}
-        onSelect={onReplaceVariant}
-      />
-      <div className="min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1">
         <CanvasViewport
           variantId={resolved.variant.id}
           boardMeta={resolved.meta}
         />
+        <div className="pointer-events-auto absolute bottom-3 right-3 z-30">
+          <VariantTabs
+            variants={variants}
+            activeVariantId={resolved.variant.id}
+            canonicalVariantId={resolved.board.canonicalVariantId}
+            onSelect={onReplaceVariant}
+          />
+        </div>
       </div>
     </section>
   );

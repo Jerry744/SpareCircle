@@ -12,6 +12,11 @@ export interface ZoomRouterProps {
   renderMap(): ReactNode;
   /** Render Level 1 (State Board) given the active target. */
   renderBoard(level: { stateNodeId: string; variantId: string }): ReactNode;
+  /**
+   * Optional Level 1 mini map overlay rendered on bottom-left of board mode.
+   * Returning null keeps previous "board only" behavior.
+   */
+  renderMapOverlay?(level: { stateNodeId: string; variantId: string }): ReactNode;
   /** Optional fallback rendered when the level cannot be satisfied. */
   fallback?: ReactNode;
 }
@@ -22,7 +27,7 @@ export interface ZoomRouterProps {
  * cue an entrance whenever the user zooms in or out.
  */
 export function ZoomRouter(props: ZoomRouterProps): JSX.Element {
-  const { renderMap, renderBoard, fallback } = props;
+  const { renderMap, renderBoard, renderMapOverlay, fallback } = props;
   const { current } = useZoomRouter();
 
   if (current.level === "map") {
@@ -37,7 +42,14 @@ export function ZoomRouter(props: ZoomRouterProps): JSX.Element {
   const key = `board:${stateNodeId}:${variantId}`;
   return (
     <ZoomTransition levelKey={key}>
-      {renderBoard({ stateNodeId, variantId }) ?? fallback ?? null}
+      <div className="relative h-full w-full">
+        {renderBoard({ stateNodeId, variantId }) ?? fallback ?? null}
+        {renderMapOverlay ? (
+          <div className="pointer-events-auto absolute bottom-3 left-3 z-30">
+            {renderMapOverlay({ stateNodeId, variantId })}
+          </div>
+        ) : null}
+      </div>
     </ZoomTransition>
   );
 }
