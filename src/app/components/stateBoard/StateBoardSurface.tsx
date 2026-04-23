@@ -8,7 +8,7 @@ import type { VariantAction } from "../../backend/reducer/variantActions";
 import type { Camera, MarqueeState } from "../canvasViewport/types";
 import { screenToWorldForCamera } from "../canvasViewport/utils";
 import { useCanvasGestures } from "../canvasViewport/useCanvasGestures";
-import { useCanvasWheel } from "../canvasViewport/useCanvasWheel";
+import { useCanvasResize } from "../canvasViewport/useCanvasResize";
 
 interface StateBoardSurfaceProps {
   project: ProjectSnapshotV2;
@@ -53,8 +53,30 @@ export function StateBoardSurface({
     [],
   );
 
+  useCanvasResize(canvasRef, containerRef, () => undefined);
   useCanvasGestures(containerRef, canvasRef, setCamera, screenToWorld);
-  const handleWheel = useCanvasWheel(setCamera, screenToWorld);
+  const handleWheel = useCallback((event: React.WheelEvent) => {
+    event.preventDefault();
+    if (!event.ctrlKey) {
+      setCamera((prev) => ({
+        ...prev,
+        x: prev.x - event.deltaX / prev.zoom,
+        y: prev.y - event.deltaY / prev.zoom,
+      }));
+      return;
+    }
+
+    const anchor = screenToWorld(event.clientX, event.clientY);
+    const delta = -event.deltaY * 0.001;
+    setCamera((prev) => {
+      const newZoom = Math.max(0.1, Math.min(5, prev.zoom * (1 + delta)));
+      return {
+        x: (anchor.x + prev.x) * prev.zoom / newZoom - anchor.x,
+        y: (anchor.y + prev.y) * prev.zoom / newZoom - anchor.y,
+        zoom: newZoom,
+      };
+    });
+  }, [screenToWorld]);
 
   const frameById = useMemo(() => {
     const out: Record<string, { variant: Variant; x: number; y: number; width: number; height: number }> = {};
@@ -190,7 +212,7 @@ export function StateBoardSurface({
       }}
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      <div className="absolute inset-0 origin-center" style={worldTransform(camera)}>
+      <div className="absolute inset-0 origin-top-left" style={worldTransform(camera)}>
         <div className="absolute -left-[5000px] -top-[5000px] h-[10000px] w-[10000px] bg-[linear-gradient(var(--color-neutral-800)_1px,transparent_1px),linear-gradient(90deg,var(--color-neutral-800)_1px,transparent_1px)] bg-[size:48px_48px]" />
         {variants.map((variant) => {
           const frame = frameById[variant.id];
@@ -227,6 +249,7 @@ export function StateBoardSurface({
 
 function worldTransform(camera: Camera): React.CSSProperties {
   return {
+    transformOrigin: "0 0",
     transform: `translate(calc(50% + ${camera.x * camera.zoom}px), calc(50% + ${camera.y * camera.zoom}px)) scale(${camera.zoom})`,
   };
 }
