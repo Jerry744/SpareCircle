@@ -1,11 +1,9 @@
 import {
   createContext,
-  useEffect,
   useContext,
   useMemo,
   useReducer,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 import {
@@ -19,7 +17,7 @@ import { editorReducer } from "./reducer";
 import { getActiveScreen } from "./tree";
 import { packClipboard, instantiateClipboard, type ClipboardPayload } from "./clipboard";
 import { generateLvglZip } from "./codegen/generator";
-import { loadActiveProjectFromIndexedDb, saveActiveProjectToIndexedDb } from "./persistence";
+import { useProjectAutoSave } from "./persistence/useProjectAutoSave";
 import type {
   AlignmentOperation,
   AssetItem,
@@ -65,8 +63,6 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export function EditorBackendProvider({ children }: { children: ReactNode }) {
-  const [isPersistenceReady, setIsPersistenceReady] = useState(false);
-  const saveTimerRef = useRef<number | null>(null);
   const clipboardRef = useRef<ClipboardPayload | null>(null);
   const [state, dispatch] = useReducer(editorReducer, undefined, () => ({
     project: createInitialProject(),
@@ -78,61 +74,7 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
     interaction: null,
   }));
 
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const saved = await loadActiveProjectFromIndexedDb();
-        if (!saved || cancelled) {
-          return;
-        }
-
-        const restored = deserializeProjectSnapshot(saved.serializedProject);
-        if (restored.ok) {
-          dispatch({ type: "hydrateProject", project: restored.project });
-          if (restored.warning) {
-            console.warn(restored.warning);
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to restore project from IndexedDB", error);
-      } finally {
-        if (!cancelled) {
-          setIsPersistenceReady(true);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isPersistenceReady) {
-      return;
-    }
-
-    if (saveTimerRef.current) {
-      window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-
-    saveTimerRef.current = window.setTimeout(() => {
-      const serialized = serializeProjectSnapshot(state.project);
-      void saveActiveProjectToIndexedDb(serialized).catch((error) => {
-        console.warn("Failed to persist project to IndexedDB", error);
-      });
-    }, 500);
-
-    return () => {
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-    };
-  }, [state.project, isPersistenceReady]);
+  useProjectAutoSave(state.project, dispatch);
 
   const actions = useMemo(
     () => ({
