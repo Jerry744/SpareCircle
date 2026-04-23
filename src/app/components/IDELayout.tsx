@@ -8,10 +8,14 @@ import { CanvasViewport } from "./CanvasViewport";
 import { BottomPanel } from "./BottomPanel";
 import { EditorBackendProvider } from "../backend/editorStore";
 import { LayoutProvider, useLayout } from "./layoutContext";
+import { NavigationMapDemo } from "./navigationMap/NavigationMapDemo";
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, PanelBottomClose, PanelBottomOpen, ChevronRight } from "lucide-react";
 
 function IDELayoutInner() {
   const layout = useLayout();
+  const showNavMapDemo =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("demo") === "navmap";
 
   useEffect(() => {
     const handleWheel = (event: WheelEvent) => {
@@ -69,7 +73,7 @@ function IDELayoutInner() {
         {/* Center Canvas + Bottom Panel */}
         <div className="flex-1 min-w-0 h-full flex flex-col relative">
           <div className="flex-1 overflow-hidden">
-            <CanvasViewport />
+            {showNavMapDemo ? <NavigationMapDemo /> : <CanvasViewport />}
           </div>
 
           {/* Bottom panel collapsed edge trigger */}
