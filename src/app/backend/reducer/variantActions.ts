@@ -2,6 +2,7 @@
 // See `dev-plan/interaction-design-framework/05-variant.md` §4.
 
 import type { VariantStatus } from "../types/variant";
+import type { WidgetType } from "../types/widget";
 
 export type VariantCreateMode = "blank" | "copy_current" | "copy_of";
 
@@ -23,6 +24,15 @@ export type VariantAction =
   | { type: "reorderVariants"; boardId: string; orderedIds: string[] }
   | { type: "deleteVariant"; variantId: string }
   | { type: "moveVariantScreen"; variantId: string; position: { x: number; y: number }; now?: string }
+  | {
+      type: "insertVariantWidget";
+      variantId: string;
+      parentId: string;
+      widgetType: WidgetType;
+      position: { x: number; y: number };
+      widgetId?: string;
+      now?: string;
+    }
   | { type: "moveVariantWidget"; widgetId: string; targetParentId: string; targetIndex: number; now?: string }
   | { type: "setVariantWidgetVisibility"; widgetId: string; visible: boolean; now?: string }
   | { type: "setBoardResolution"; boardId: string; width: number; height: number; now?: string };

@@ -2,13 +2,14 @@ import type { ProjectSnapshotV2 } from "../types/projectV2";
 import type { StateBoard } from "../types/stateBoard";
 import type { Variant, VariantStatus } from "../types/variant";
 import type { WidgetNode } from "../types/widget";
-import { CONTAINER_WIDGET_TYPES } from "../types/widget";
+import { CONTAINER_WIDGET_TYPES, INSERTABLE_WIDGET_TYPES } from "../types/widget";
 import { DEFAULT_STATE_BOARD_META } from "../types/stateBoard";
 import { ID_PREFIX, makeId } from "../types/idPrefixes";
 import { cloneVariant } from "../stateBoard/variantCloning";
 import { reassignCanonicalAfterMutation } from "../stateBoard/variantHelpers";
 import { touchVariant } from "./helpers";
 import type { VariantAction } from "./variantActions";
+import { createWidgetNode } from "../widgets";
 
 function uniqueVariantName(project: ProjectSnapshotV2, board: StateBoard, requested: string | undefined): string {
   const base = requested?.trim() || "Variant";
@@ -227,6 +228,38 @@ export function handleMoveVariantScreen(
   return touchVariant(next, variant.id, action.now);
 }
 
+export function handleInsertVariantWidget(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "insertVariantWidget" }>,
+): ProjectSnapshotV2 {
+  const variant = project.variantsById[action.variantId];
+  const parent = project.widgetsById[action.parentId];
+  if (!variant || !parent || !INSERTABLE_WIDGET_TYPES.includes(action.widgetType)) return project;
+  if (action.widgetId && project.widgetsById[action.widgetId]) return project;
+  if (!CONTAINER_WIDGET_TYPES.has(parent.type)) return project;
+
+  const variantWidgetIds = collectWidgetSubtreeIds(project.widgetsById, variant.rootWidgetId);
+  if (!variantWidgetIds.has(parent.id)) return project;
+
+  const widget = createWidgetNode(
+    project,
+    action.widgetType,
+    Math.max(0, Math.round(action.position.x)),
+    Math.max(0, Math.round(action.position.y)),
+    action.widgetId,
+  );
+  const nextChildrenIds = [...parent.childrenIds, widget.id];
+  const next: ProjectSnapshotV2 = {
+    ...project,
+    widgetsById: {
+      ...project.widgetsById,
+      [parent.id]: { ...parent, childrenIds: nextChildrenIds },
+      [widget.id]: { ...widget, parentId: parent.id },
+    },
+  };
+  return touchVariant(next, variant.id, action.now);
+}
+
 export function handleMoveVariantWidget(
   project: ProjectSnapshotV2,
   action: Extract<VariantAction, { type: "moveVariantWidget" }>,
@@ -336,6 +369,7 @@ export function variantReducer(project: ProjectSnapshotV2, action: VariantAction
     case "reorderVariants": return handleReorderVariants(project, action);
     case "deleteVariant": return handleDeleteVariant(project, action);
     case "moveVariantScreen": return handleMoveVariantScreen(project, action);
+    case "insertVariantWidget": return handleInsertVariantWidget(project, action);
     case "moveVariantWidget": return handleMoveVariantWidget(project, action);
     case "setVariantWidgetVisibility": return handleSetVariantWidgetVisibility(project, action);
     case "setBoardResolution": return handleSetBoardResolution(project, action);
