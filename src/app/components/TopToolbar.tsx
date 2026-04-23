@@ -17,13 +17,24 @@ import {
   PanelLeft,
   PanelRight,
   PanelBottom,
+  GitBranch,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useEditorBackend } from "../backend/editorStore";
 import { StyleTokensDialog } from "./StyleTokensDialog";
 import { useLayout } from "./layoutContext";
 
-export function TopToolbar() {
+export type EditorSurfaceMode = "ui" | "navmap";
+
+interface TopToolbarProps {
+  surfaceMode?: EditorSurfaceMode;
+  onSurfaceModeChange?: (mode: EditorSurfaceMode) => void;
+}
+
+export function TopToolbar({
+  surfaceMode = "ui",
+  onSurfaceModeChange,
+}: TopToolbarProps = {}) {
   const [importError, setImportError] = useState<string | null>(null);
   const [importWarning, setImportWarning] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -275,6 +286,32 @@ export function TopToolbar() {
         <button className="px-3 py-1.5 hover:bg-neutral-600 rounded flex items-center gap-2 transition-colors text-neutral-200">
           <Maximize2 size={16} />
         </button>
+        <div className="h-6 w-px bg-neutral-600 mx-1" />
+        <div className="flex items-center gap-1 bg-neutral-800 rounded p-0.5">
+          <button
+            onClick={() => onSurfaceModeChange?.("ui")}
+            className={`px-2.5 py-1 rounded text-xs transition-colors ${
+              surfaceMode === "ui"
+                ? "bg-highlight-500 text-white"
+                : "text-neutral-200 hover:bg-neutral-600"
+            }`}
+            title="Switch to UI Canvas"
+          >
+            UI
+          </button>
+          <button
+            onClick={() => onSurfaceModeChange?.("navmap")}
+            className={`px-2.5 py-1 rounded text-xs transition-colors flex items-center gap-1 ${
+              surfaceMode === "navmap"
+                ? "bg-highlight-500 text-white"
+                : "text-neutral-200 hover:bg-neutral-600"
+            }`}
+            title="Switch to Navigation Map"
+          >
+            <GitBranch size={12} />
+            NavMap
+          </button>
+        </div>
         <div className="h-6 w-px bg-neutral-600 mx-1" />
         <div className="flex items-center gap-1 bg-neutral-800 rounded p-0.5">
           <button className="px-2 py-1 hover:bg-neutral-600 rounded text-xs transition-colors text-neutral-200">

@@ -42,6 +42,7 @@ export interface NavigationMapProps {
   initialCamera?: NavMapCamera;
   theme?: NavMapRenderTheme;
   className?: string;
+  hideInspector?: boolean;
 }
 
 const ZOOM_STEP = 1.2;
@@ -64,6 +65,7 @@ export function NavigationMap({
   initialCamera,
   theme,
   className,
+  hideInspector = false,
 }: NavigationMapProps) {
   const [camera, setCameraState] = useState<NavMapCamera>(
     () => initialCamera ?? map.viewport ?? DEFAULT_NAV_MAP_VIEWPORT,
@@ -228,17 +230,19 @@ export function NavigationMap({
           </div>
         </NavMapContextMenu>
       </div>
-      <aside className="w-80 border-l border-neutral-900 bg-neutral-800 overflow-auto">
-        <NavMapInspectorHost
-          map={map}
-          selection={selection}
-          screenGroups={groupList}
-          transitionEventBindings={transitionEventBindings}
-          onAction={onAction}
-          onRequestZoomInto={onRequestZoomInto}
-          confirmDelete={confirmDelete}
-        />
-      </aside>
+      {hideInspector ? null : (
+        <aside className="w-80 border-l border-neutral-900 bg-neutral-800 overflow-auto">
+          <NavMapInspectorHost
+            map={map}
+            selection={selection}
+            screenGroups={groupList}
+            transitionEventBindings={transitionEventBindings}
+            onAction={onAction}
+            onRequestZoomInto={onRequestZoomInto}
+            confirmDelete={confirmDelete}
+          />
+        </aside>
+      )}
     </div>
   );
 }

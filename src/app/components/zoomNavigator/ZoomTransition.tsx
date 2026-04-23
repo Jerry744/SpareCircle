@@ -1,7 +1,7 @@
-// Minimal CSS-only zoom entrance animation (§6 of
+// Minimal CSS-only focus-switch entrance animation (§6 of
 // `dev-plan/interaction-design-framework/03-zoom-navigation.md`). Whenever
-// the `levelKey` changes the wrapper mounts its child with a slight scale
-// + fade and settles on the next animation frame. Polish (crossfade,
+// the `levelKey` changes the wrapper mounts its child with a light fade
+// + vertical settle and commits on the next animation frame. Polish (crossfade,
 // spring physics) is deferred to Phase 7.
 
 import {
@@ -47,7 +47,7 @@ export function ZoomTransition(props: ZoomTransitionProps): JSX.Element {
     transitionDuration: `${durationMs}ms`,
     transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
     opacity: entered ? 1 : 0,
-    transform: entered ? "scale(1)" : "scale(1.02)",
+    transform: entered ? "translateY(0px)" : "translateY(4px)",
     willChange: "opacity, transform",
     height: "100%",
     width: "100%",
