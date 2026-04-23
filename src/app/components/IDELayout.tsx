@@ -12,11 +12,13 @@ import { NavMapMiniOverlay } from "./navigationMap/NavMapMiniOverlay";
 import { createEmptyProjectV2 } from "../backend/validation";
 import type { ProjectSnapshotV2 } from "../backend/types/projectV2";
 import type { NavMapAction } from "../backend/reducer/navMapActions";
+import type { VariantAction } from "../backend/reducer/variantActions";
 import {
   EMPTY_NAV_MAP_SELECTION,
   type NavMapSelection,
 } from "../backend/types/navMapSelection";
 import { navigationMapReducer } from "../backend/reducer/navigationMapReducer";
+import { variantReducer } from "../backend/reducer/variantReducer";
 import { ChevronRight } from "lucide-react";
 import { ZoomRouter } from "./zoomNavigator/ZoomRouter";
 import { ZoomRouterProvider, useZoomRouter } from "./zoomNavigator/useZoomRouter";
@@ -84,6 +86,9 @@ function IDELayoutInner() {
 
   const handleNavMapAction = (action: NavMapAction) => {
     setNavMapProject((prev) => navigationMapReducer(prev, action));
+  };
+  const handleVariantAction = (action: VariantAction) => {
+    setNavMapProject((prev) => variantReducer(prev, action));
   };
   const handleNavMapSelectionChange = (selection: NavMapSelection) => {
     setNavMapSelection(selection);
@@ -201,6 +206,7 @@ function IDELayoutInner() {
                   variantId={variantId}
                   onGoToMap={goToMap}
                   onReplaceVariant={replaceVariant}
+                  onVariantAction={handleVariantAction}
                 />
               )}
               renderMapOverlay={() => (
