@@ -23,6 +23,9 @@ import { ChevronRight } from "lucide-react";
 import { ZoomRouter } from "./zoomNavigator/ZoomRouter";
 import { ZoomRouterProvider, useZoomRouter } from "./zoomNavigator/useZoomRouter";
 import { StateBoardShell } from "./stateBoard/StateBoardShell";
+import { parseProjectSnapshotV2 } from "../backend/validation";
+
+const STATE_PROJECT_STORAGE_KEY = "sparecircle:stateProject:v2";
 
 function createInitialNavMapProject(): ProjectSnapshotV2 {
   let project = createEmptyProjectV2({
@@ -71,10 +74,22 @@ function createInitialNavMapProject(): ProjectSnapshotV2 {
   return project;
 }
 
+function loadInitialNavMapProject(): ProjectSnapshotV2 {
+  if (typeof window === "undefined") return createInitialNavMapProject();
+  const saved = window.localStorage.getItem(STATE_PROJECT_STORAGE_KEY);
+  if (!saved) return createInitialNavMapProject();
+  try {
+    const parsed = parseProjectSnapshotV2(JSON.parse(saved));
+    return parsed.ok ? parsed.value : createInitialNavMapProject();
+  } catch {
+    return createInitialNavMapProject();
+  }
+}
+
 function IDELayoutInner() {
   const layout = useLayout();
   const [navMapProject, setNavMapProject] = useState<ProjectSnapshotV2>(() =>
-    createInitialNavMapProject(),
+    loadInitialNavMapProject(),
   );
   const [navMapSelection, setNavMapSelection] = useState<NavMapSelection>(
     EMPTY_NAV_MAP_SELECTION,
@@ -135,6 +150,10 @@ function IDELayoutInner() {
     return () => window.removeEventListener("wheel", handleWheel);
   }, []);
 
+  useEffect(() => {
+    window.localStorage.setItem(STATE_PROJECT_STORAGE_KEY, JSON.stringify(navMapProject));
+  }, [navMapProject]);
+
   return (
     <div className="sc-editor-shell h-screen w-screen flex flex-col bg-neutral-900 text-neutral-100">
       <TopToolbar
@@ -160,7 +179,19 @@ function IDELayoutInner() {
             onVariantAction={handleVariantAction}
           />
           <div className="h-px bg-neutral-900" />
-          <HierarchyPanel />
+          <HierarchyPanel
+            stateHierarchyContext={
+              current.level === "board" && currentBoard
+                ? {
+                    project: navMapProject,
+                    board: currentBoard,
+                    activeVariantId: current.variantId,
+                    onSelectVariant: replaceVariant,
+                    onVariantAction: handleVariantAction,
+                  }
+                : undefined
+            }
+          />
         </div>
 
         {/* Left sidebar collapsed edge trigger */}

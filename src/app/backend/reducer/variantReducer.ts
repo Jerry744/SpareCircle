@@ -2,6 +2,7 @@ import type { ProjectSnapshotV2 } from "../types/projectV2";
 import type { StateBoard } from "../types/stateBoard";
 import type { Variant, VariantStatus } from "../types/variant";
 import type { WidgetNode } from "../types/widget";
+import { CONTAINER_WIDGET_TYPES } from "../types/widget";
 import { DEFAULT_STATE_BOARD_META } from "../types/stateBoard";
 import { ID_PREFIX, makeId } from "../types/idPrefixes";
 import { cloneVariant } from "../stateBoard/variantCloning";
@@ -31,6 +32,27 @@ function pruneWidgetSubtree(widgetsById: Record<string, WidgetNode>, rootId: str
   const next: Record<string, WidgetNode> = {};
   for (const [id, widget] of Object.entries(widgetsById)) if (!drop.has(id)) next[id] = widget;
   return next;
+}
+
+function collectWidgetSubtreeIds(widgetsById: Record<string, WidgetNode>, rootId: string): Set<string> {
+  const ids = new Set<string>();
+  const stack = [rootId];
+  while (stack.length > 0) {
+    const id = stack.pop() as string;
+    if (ids.has(id)) continue;
+    const widget = widgetsById[id];
+    if (!widget) continue;
+    ids.add(id);
+    for (const childId of widget.childrenIds) stack.push(childId);
+  }
+  return ids;
+}
+
+function findVariantIdForWidget(project: ProjectSnapshotV2, widgetId: string): string | null {
+  for (const variant of Object.values(project.variantsById)) {
+    if (collectWidgetSubtreeIds(project.widgetsById, variant.rootWidgetId).has(widgetId)) return variant.id;
+  }
+  return null;
 }
 
 function makeRootFromMeta(id: string, name: string, width: number, height: number): WidgetNode {
@@ -205,6 +227,72 @@ export function handleMoveVariantScreen(
   return touchVariant(next, variant.id, action.now);
 }
 
+export function handleMoveVariantWidget(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "moveVariantWidget" }>,
+): ProjectSnapshotV2 {
+  const widget = project.widgetsById[action.widgetId];
+  const targetParent = project.widgetsById[action.targetParentId];
+  if (!widget || !targetParent || !widget.parentId || !CONTAINER_WIDGET_TYPES.has(targetParent.type)) return project;
+
+  const owningVariantId = findVariantIdForWidget(project, widget.id);
+  const targetVariantId = findVariantIdForWidget(project, targetParent.id);
+  if (!owningVariantId || !targetVariantId) return project;
+
+  const owningVariant = project.variantsById[owningVariantId];
+  if (widget.id === owningVariant.rootWidgetId) return project;
+
+  const sourceParent = project.widgetsById[widget.parentId];
+  if (!sourceParent) return project;
+
+  const descendants = collectWidgetSubtreeIds(project.widgetsById, widget.id);
+  if (descendants.has(targetParent.id)) return project;
+
+  const sourceIndex = sourceParent.childrenIds.indexOf(widget.id);
+  if (sourceIndex < 0) return project;
+
+  const normalizedTargetIndex = Math.max(0, Math.min(action.targetIndex, targetParent.childrenIds.length));
+  const sameParent = sourceParent.id === targetParent.id;
+  const adjustedTargetIndex = sameParent && sourceIndex < normalizedTargetIndex
+    ? normalizedTargetIndex - 1
+    : normalizedTargetIndex;
+  if (sameParent && sourceIndex === adjustedTargetIndex) return project;
+
+  const nextSourceChildren = [...sourceParent.childrenIds];
+  nextSourceChildren.splice(sourceIndex, 1);
+  const nextTargetChildren = sameParent ? nextSourceChildren : [...targetParent.childrenIds];
+  nextTargetChildren.splice(adjustedTargetIndex, 0, widget.id);
+
+  const next: ProjectSnapshotV2 = {
+    ...project,
+    widgetsById: {
+      ...project.widgetsById,
+      [sourceParent.id]: { ...sourceParent, childrenIds: sameParent ? nextTargetChildren : nextSourceChildren },
+      [targetParent.id]: { ...targetParent, childrenIds: nextTargetChildren },
+      [widget.id]: { ...widget, parentId: targetParent.id },
+    },
+  };
+  return touchVariant(touchVariant(next, owningVariantId, action.now), targetVariantId, action.now);
+}
+
+export function handleSetVariantWidgetVisibility(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "setVariantWidgetVisibility" }>,
+): ProjectSnapshotV2 {
+  const widget = project.widgetsById[action.widgetId];
+  if (!widget || widget.type === "Screen" || widget.visible === action.visible) return project;
+  const variantId = findVariantIdForWidget(project, widget.id);
+  if (!variantId) return project;
+  const next: ProjectSnapshotV2 = {
+    ...project,
+    widgetsById: {
+      ...project.widgetsById,
+      [widget.id]: { ...widget, visible: action.visible },
+    },
+  };
+  return touchVariant(next, variantId, action.now);
+}
+
 export function handleSetBoardResolution(
   project: ProjectSnapshotV2,
   action: Extract<VariantAction, { type: "setBoardResolution" }>,
@@ -248,6 +336,8 @@ export function variantReducer(project: ProjectSnapshotV2, action: VariantAction
     case "reorderVariants": return handleReorderVariants(project, action);
     case "deleteVariant": return handleDeleteVariant(project, action);
     case "moveVariantScreen": return handleMoveVariantScreen(project, action);
+    case "moveVariantWidget": return handleMoveVariantWidget(project, action);
+    case "setVariantWidgetVisibility": return handleSetVariantWidgetVisibility(project, action);
     case "setBoardResolution": return handleSetBoardResolution(project, action);
     default: {
       const _exhaustive: never = action;

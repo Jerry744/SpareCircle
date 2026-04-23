@@ -172,6 +172,49 @@ describe("variantReducer", () => {
     expect(resized.widgetsById["draft-root"]).toMatchObject({ width: 800, height: 480 });
     expect(parseProjectSnapshotV2(resized).ok).toBe(true);
   });
+
+  it("moves and hides widgets inside the full state hierarchy without changing schema", () => {
+    const base = makeFixture();
+    const project = {
+      ...base,
+      widgetsById: {
+        ...base.widgetsById,
+        "screen-root": { ...base.widgetsById["screen-root"], childrenIds: ["panel-a", "button-a"] },
+        "panel-a": {
+          id: "panel-a",
+          name: "Panel A",
+          type: "Panel",
+          parentId: "screen-root",
+          childrenIds: [],
+          x: 0,
+          y: 0,
+          width: 120,
+          height: 80,
+          visible: true,
+        } satisfies WidgetNode,
+        "button-a": { ...base.widgetsById["button-a"], parentId: "screen-root" },
+      },
+    };
+    const moved = variantReducer(project, {
+      type: "moveVariantWidget",
+      widgetId: "button-a",
+      targetParentId: "panel-a",
+      targetIndex: 0,
+      now: NOW,
+    });
+    expect(moved.widgetsById["button-a"].parentId).toBe("panel-a");
+    expect(moved.widgetsById["panel-a"].childrenIds).toEqual(["button-a"]);
+    expect(moved.widgetsById["screen-root"].childrenIds).toEqual(["panel-a"]);
+
+    const hidden = variantReducer(moved, {
+      type: "setVariantWidgetVisibility",
+      widgetId: "button-a",
+      visible: false,
+      now: NOW,
+    });
+    expect(hidden.widgetsById["button-a"].visible).toBe(false);
+    expect(parseProjectSnapshotV2(hidden).ok).toBe(true);
+  });
 });
 
 describe("reassignCanonicalAfterMutation", () => {
