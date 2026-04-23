@@ -39,6 +39,12 @@ export type NavMapAction =
     }
   | { type: "deleteStateNodes"; stateNodeIds: string[] }
   | {
+      type: "setStateNodeAppearance";
+      stateNodeId: string;
+      color?: string | null;
+      description?: string | null;
+    }
+  | {
       type: "createTransition";
       fromStateNodeId: string;
       toStateNodeId: string;

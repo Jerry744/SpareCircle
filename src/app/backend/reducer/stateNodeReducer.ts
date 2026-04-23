@@ -195,6 +195,29 @@ export function handleAssignStateNodeGroup(
   return { ...replaceStateNode(project, action.stateNodeId, nextNode), screenGroups: groups };
 }
 
+export function handleSetStateNodeAppearance(
+  project: ProjectSnapshotV2,
+  action: Extract<NavMapAction, { type: "setStateNodeAppearance" }>,
+): ProjectSnapshotV2 {
+  const node = project.navigationMap.stateNodes[action.stateNodeId];
+  if (!node) return project;
+  const nextColor =
+    action.color === null ? undefined : action.color === undefined ? node.color : action.color;
+  const nextDescription =
+    action.description === null
+      ? undefined
+      : action.description === undefined
+        ? node.description
+        : action.description;
+  if (nextColor === node.color && nextDescription === node.description) return project;
+  const nextNode: StateNode = { ...node };
+  if (nextColor === undefined) delete nextNode.color;
+  else nextNode.color = nextColor;
+  if (nextDescription === undefined) delete nextNode.description;
+  else nextNode.description = nextDescription;
+  return replaceStateNode(project, action.stateNodeId, nextNode);
+}
+
 export function handleToggleNavigationState(
   project: ProjectSnapshotV2,
   action: Extract<NavMapAction, { type: "toggleNavigationState" }>,

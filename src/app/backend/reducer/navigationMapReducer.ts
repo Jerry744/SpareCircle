@@ -15,6 +15,7 @@ import {
   handleMoveStateNode,
   handleRenameStateNode,
   handleSetInitialState,
+  handleSetStateNodeAppearance,
   handleToggleNavigationState,
 } from "./stateNodeReducer";
 import {
@@ -68,6 +69,8 @@ export function navigationMapReducer(
       return handleToggleNavigationState(project, action);
     case "deleteStateNodes":
       return handleDeleteStateNodes(project, action);
+    case "setStateNodeAppearance":
+      return handleSetStateNodeAppearance(project, action);
     case "createTransition":
       return handleCreateTransition(project, action);
     case "deleteTransition":
@@ -83,8 +86,14 @@ export function navigationMapReducer(
     case "autoTidyNavMap":
       return handleAutoTidyNavMap(project, action);
     default: {
-      const exhaustive: never = action;
-      return exhaustive;
+      // Runtime fallback: React/devtools can occasionally feed stray
+      // actions that bypass the static union. We preserve the invariant
+      // "reducer always returns ProjectSnapshotV2" by returning the
+      // current project unchanged. The explicit `never` assertion below
+      // still surfaces missing cases at compile time.
+      const _exhaustive: never = action;
+      void _exhaustive;
+      return project;
     }
   }
 }
