@@ -252,7 +252,7 @@ describe("variantReducer", () => {
       variantId: "variant-draft",
       parentId: "draft-panel",
       widgetType: "Button",
-      position: { x: 18, y: 26 },
+      position: { x: -18, y: 26 },
       widgetId: "draft-button",
       now: NOW,
     });
@@ -260,7 +260,7 @@ describe("variantReducer", () => {
     expect(inserted.widgetsById["draft-button"]).toMatchObject({
       parentId: "draft-panel",
       type: "Button",
-      x: 18,
+      x: -18,
       y: 26,
     });
 

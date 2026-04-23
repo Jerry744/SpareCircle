@@ -1,8 +1,12 @@
 import { DESIGN_TOKENS } from "../../constants/designTokens";
 import { resolveWidgetColor } from "../../backend/validation";
 import type { ProjectSnapshot, WidgetTreeNode } from "../../backend/editorStore";
+import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { Camera, DragState, MarqueeState } from "./types";
 import { worldToScreenForCamera } from "./utils";
+
+type RenderProject = Pick<ProjectSnapshot, "styleTokens" | "assets" | "canvasSnap">
+  | Pick<ProjectSnapshotV2, "styleTokens" | "assets" | "canvasSnap">;
 
 function hexWithAlpha(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -57,10 +61,20 @@ function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number, 
   ctx.globalAlpha = 1;
 }
 
+export function renderCanvasBackdrop(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  camera: Camera,
+) {
+  ctx.fillStyle = DESIGN_TOKENS.neutral[900];
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawGrid(ctx, canvas.width, canvas.height, camera);
+}
+
 function drawWidget(
   ctx: CanvasRenderingContext2D,
   params: {
-    project: ProjectSnapshot;
+    project: RenderProject;
     selectedWidgetIds: string[];
     imageCache: Map<string, HTMLImageElement>;
     rerender: () => void;
@@ -285,11 +299,37 @@ function drawWidget(
   ctx.restore();
 }
 
+export function renderWidgetTree(params: {
+  ctx: CanvasRenderingContext2D;
+  project: RenderProject;
+  rootTree: WidgetTreeNode | null;
+  selectedWidgetIds: string[];
+  imageCache: Map<string, HTMLImageElement>;
+  rerender: () => void;
+  offsetX?: number;
+  offsetY?: number;
+}) {
+  if (!params.rootTree) return;
+  drawWidget(
+    params.ctx,
+    {
+      project: params.project,
+      selectedWidgetIds: params.selectedWidgetIds,
+      imageCache: params.imageCache,
+      rerender: params.rerender,
+    },
+    params.rootTree,
+    params.offsetX ?? 0,
+    params.offsetY ?? 0,
+    0,
+  );
+}
+
 export function renderCanvas(params: {
   canvas: HTMLCanvasElement | null;
   camera: Camera;
   rootTree: WidgetTreeNode | null;
-  project: ProjectSnapshot;
+  project: RenderProject;
   selectedWidgetIds: string[];
   marquee: MarqueeState | null;
   dragState: DragState | null;
@@ -302,31 +342,21 @@ export function renderCanvas(params: {
     return;
   }
 
-  ctx.fillStyle = DESIGN_TOKENS.neutral[900];
-  ctx.fillRect(0, 0, params.canvas.width, params.canvas.height);
-
-  drawGrid(ctx, params.canvas.width, params.canvas.height, params.camera);
+  renderCanvasBackdrop(ctx, params.canvas, params.camera);
 
   const screenPosition = worldToScreenForCamera(params.canvas, params.camera, 0, 0);
   ctx.save();
   ctx.translate(screenPosition.x, screenPosition.y);
   ctx.scale(params.camera.zoom, params.camera.zoom);
 
-  if (params.rootTree) {
-    drawWidget(
-      ctx,
-      {
-        project: params.project,
-        selectedWidgetIds: params.selectedWidgetIds,
-        imageCache: params.imageCache,
-        rerender: params.rerender,
-      },
-      params.rootTree,
-      0,
-      0,
-      0,
-    );
-  }
+  renderWidgetTree({
+    ctx,
+    project: params.project,
+    rootTree: params.rootTree,
+    selectedWidgetIds: params.selectedWidgetIds,
+    imageCache: params.imageCache,
+    rerender: params.rerender,
+  });
 
   ctx.restore();
 

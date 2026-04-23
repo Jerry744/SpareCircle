@@ -244,8 +244,8 @@ export function handleInsertVariantWidget(
   const widget = createWidgetNode(
     project,
     action.widgetType,
-    Math.max(0, Math.round(action.position.x)),
-    Math.max(0, Math.round(action.position.y)),
+    Math.round(action.position.x),
+    Math.round(action.position.y),
     action.widgetId,
   );
   const nextChildrenIds = [...parent.childrenIds, widget.id];

@@ -134,4 +134,22 @@ describe("resolveStateBoardWidgetDropTarget", () => {
       world: { x: 900, y: 900 },
     })).toBeNull();
   });
+
+  it("falls back to the active variant root for board drops outside every screen and keeps negative local coords", () => {
+    const project = makeBoardFixture();
+    const board = project.stateBoardsById["board-alpha"];
+
+    expect(resolveStateBoardWidgetDropTarget({
+      project,
+      board,
+      world: { x: 280, y: -20 },
+      fallbackVariantId: "variant-draft",
+    })).toEqual({
+      variantId: "variant-draft",
+      rootWidgetId: "draft-root",
+      parentId: "draft-root",
+      localX: -40,
+      localY: -60,
+    });
+  });
 });

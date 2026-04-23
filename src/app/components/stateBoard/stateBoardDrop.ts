@@ -8,8 +8,9 @@ export function resolveStateBoardWidgetDropTarget(params: {
   project: ProjectSnapshotV2;
   board: StateBoard;
   world: Point;
+  fallbackVariantId?: string;
 }): WidgetDropTarget | null {
-  const { project, board, world } = params;
+  const { project, board, world, fallbackVariantId } = params;
 
   for (let index = board.variantIds.length - 1; index >= 0; index -= 1) {
     const variantId = board.variantIds[index];
@@ -31,6 +32,20 @@ export function resolveStateBoardWidgetDropTarget(params: {
     });
     if (!target) continue;
     return { ...target, variantId };
+  }
+
+  if (fallbackVariantId) {
+    const fallbackVariant = project.variantsById[fallbackVariantId];
+    const root = fallbackVariant ? project.widgetsById[fallbackVariant.rootWidgetId] : null;
+    if (fallbackVariant && root && board.variantIds.includes(fallbackVariant.id)) {
+      return {
+        variantId: fallbackVariant.id,
+        rootWidgetId: root.id,
+        parentId: root.id,
+        localX: Math.round(world.x - root.x),
+        localY: Math.round(world.y - root.y),
+      };
+    }
   }
 
   return null;

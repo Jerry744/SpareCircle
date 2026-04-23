@@ -1,12 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Star } from "lucide-react";
 import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { StateBoard } from "../../backend/types/stateBoard";
 import type { Variant } from "../../backend/types/variant";
 import type { VariantAction } from "../../backend/reducer/variantActions";
+import { buildWidgetTree } from "../../backend/tree";
 import { mapPaletteWidgetToType, type Point } from "../../backend/editorStore";
 import { getNextWidgetId } from "../../backend/widgets";
 import type { Camera, MarqueeState } from "../canvasViewport/types";
+import { renderCanvasBackdrop, renderWidgetTree } from "../canvasViewport/render";
 import { screenToWorldForCamera } from "../canvasViewport/utils";
 import { useCanvasGestures } from "../canvasViewport/useCanvasGestures";
 import { useCanvasResize } from "../canvasViewport/useCanvasResize";
@@ -46,6 +48,7 @@ export function StateBoardSurface({
   const [isPanning, setIsPanning] = useState(false);
   const [isMiddlePanning, setIsMiddlePanning] = useState(false);
   const lastMousePos = useRef({ x: 0, y: 0 });
+  const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
 
@@ -59,8 +62,6 @@ export function StateBoardSurface({
     [],
   );
 
-  useCanvasResize(canvasRef, containerRef, () => undefined);
-  useCanvasGestures(containerRef, canvasRef, setCamera, screenToWorld);
   const handleWheel = useCallback((event: React.WheelEvent) => {
     event.preventDefault();
     if (!event.ctrlKey) {
@@ -92,8 +93,46 @@ export function StateBoardSurface({
     }
     return out;
   }, [project.widgetsById, variants]);
+  const rootTreesByVariant = useMemo(() => {
+    const out: Record<string, ReturnType<typeof buildWidgetTree>> = {};
+    for (const variant of variants) out[variant.id] = buildWidgetTree(project, variant.rootWidgetId);
+    return out;
+  }, [project, variants]);
 
   const selectedVariantIds = selection.kind === "screen" ? selection.variantIds : [selection.variantId];
+  const selectedWidgetIds = selection.kind === "widget" ? selection.widgetIds : [];
+
+  const render = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+
+    renderCanvasBackdrop(ctx, canvas, camera);
+    ctx.save();
+    ctx.translate(canvas.width / 2 + camera.x * camera.zoom, canvas.height / 2 + camera.y * camera.zoom);
+    ctx.scale(camera.zoom, camera.zoom);
+    for (const variant of variants) {
+      const root = project.widgetsById[variant.rootWidgetId];
+      if (!root) continue;
+      renderWidgetTree({
+        ctx,
+        project,
+        rootTree: rootTreesByVariant[variant.id],
+        selectedWidgetIds: selection.kind === "widget" && selection.variantId === variant.id ? selectedWidgetIds : [],
+        imageCache: imageCacheRef.current,
+        rerender: render,
+        offsetX: root.x,
+        offsetY: root.y,
+      });
+    }
+    ctx.restore();
+  }, [camera, project, rootTreesByVariant, selectedWidgetIds, selection, variants]);
+
+  useCanvasResize(canvasRef, containerRef, render);
+  useCanvasGestures(containerRef, canvasRef, setCamera, screenToWorld);
+  useEffect(() => {
+    render();
+  }, [render]);
 
   const hitTest = (world: Point): string | null => {
     for (let index = variants.length - 1; index >= 0; index -= 1) {
@@ -202,7 +241,12 @@ export function StateBoardSurface({
     if (!widgetType) return;
 
     const world = screenToWorld(event.clientX, event.clientY);
-    const dropTarget = resolveStateBoardWidgetDropTarget({ project, board, world });
+    const dropTarget = resolveStateBoardWidgetDropTarget({
+      project,
+      board,
+      world,
+      fallbackVariantId: activeVariantId,
+    });
     if (!dropTarget?.variantId) return;
 
     const widgetId = getNextWidgetId(project, widgetType);
@@ -229,9 +273,8 @@ export function StateBoardSurface({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onDragOver={(event) => {
-        if (mapPaletteWidgetToType(event.dataTransfer.getData("widget"))) {
-          event.preventDefault();
-        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
       }}
       onDrop={handleDrop}
       onKeyDown={(event) => {
@@ -261,7 +304,7 @@ export function StateBoardSurface({
           return (
             <section
               key={variant.id}
-              className={`absolute rounded border bg-neutral-950 shadow-xl ${
+              className={`pointer-events-none absolute rounded border shadow-xl ${
                 isSelected ? "border-highlight-500 ring-2 ring-highlight-500/40" : "border-neutral-700"
               }`}
               style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
