@@ -59,7 +59,8 @@ export function useCanvasGestures(
       }
 
       const ratio = gesture.scale / previousScale;
-      const anchor = zoomAnchorWorldRef.current ?? getAnchorWorldFromGesture(gesture);
+      const anchor = getAnchorWorldFromGesture(gesture);
+      zoomAnchorWorldRef.current = anchor;
       setCamera((prev) => {
         const newZoom = Math.max(0.1, Math.min(5, prev.zoom * ratio));
         return {

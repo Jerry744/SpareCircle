@@ -1,11 +1,68 @@
 import { Copy, Monitor, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEditorBackend } from "../backend/editorStore";
+import type { ProjectSnapshotV2 } from "../backend/types/projectV2";
+import type { VariantAction } from "../backend/reducer/variantActions";
 
-export function ScreensPanel() {
+interface ScreensPanelProps {
+  stateProject?: ProjectSnapshotV2;
+  activeStateNodeId?: string;
+  activeVariantId?: string;
+  onOpenStateVariant?(stateNodeId: string, variantId: string): void;
+  onVariantAction?(action: VariantAction): void;
+}
+
+export function ScreensPanel(props: ScreensPanelProps = {}) {
+  if (props.stateProject && props.onVariantAction && props.onOpenStateVariant) {
+    return <StateScreensPanel {...props as Required<Pick<ScreensPanelProps, "stateProject" | "onVariantAction" | "onOpenStateVariant">> & ScreensPanelProps} />;
+  }
+  return <LegacyScreensPanel />;
+}
+
+function StateScreensPanel({
+  stateProject,
+  activeStateNodeId,
+  onOpenStateVariant,
+  onVariantAction: _onVariantAction,
+}: Required<Pick<ScreensPanelProps, "stateProject" | "onVariantAction" | "onOpenStateVariant">> & ScreensPanelProps) {
+  const states = stateProject.navigationMap.stateNodeOrder
+    .map((id) => stateProject.navigationMap.stateNodes[id])
+    .filter(Boolean);
+
+  return (
+    <div className="shrink-0 flex flex-col min-h-0 max-h-[58%]">
+      <div className="h-10 flex items-center px-3">
+        <span className="text-xs font-semibold text-neutral-300">States</span>
+      </div>
+      <div className="overflow-y-auto p-2">
+        {states.map((stateNode) => {
+          const board = stateProject.stateBoardsById[stateNode.boardId];
+          const isActive = activeStateNodeId === stateNode.id;
+          const resolution = board ? `${board.meta.width} × ${board.meta.height}` : "-- × --";
+          return (
+            <button
+              key={stateNode.id}
+              type="button"
+              className={`flex w-full items-center justify-between gap-3 rounded px-2 py-2 text-left text-xs ${
+                isActive ? "bg-highlight-900 text-white" : "text-neutral-200 hover:bg-neutral-700"
+              }`}
+              onClick={() => {
+                if (!board) return;
+                onOpenStateVariant(stateNode.id, board.canonicalVariantId);
+              }}
+            >
+              <span className="min-w-0 flex-1 truncate font-medium">{stateNode.name}</span>
+              <span className={isActive ? "text-neutral-100" : "text-neutral-400"}>{resolution}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LegacyScreensPanel() {
   const {
-    state: {
-      project,
-    },
+    state: { project },
     actions: { setActiveScreen, createScreen, renameScreen, duplicateScreen, deleteScreen },
   } = useEditorBackend();
 
@@ -34,9 +91,7 @@ export function ScreensPanel() {
             <div
               key={screen.id}
               className={`px-3 py-2 rounded cursor-pointer flex items-center gap-2 transition-colors ${
-                screen.active
-                  ? "bg-highlight-900 text-white"
-                  : "hover:bg-neutral-600 text-neutral-200"
+                screen.active ? "bg-highlight-900 text-white" : "hover:bg-neutral-600 text-neutral-200"
               }`}
               onClick={() => setActiveScreen(screen.id)}
             >
@@ -47,9 +102,7 @@ export function ScreensPanel() {
                 onClick={(event) => {
                   event.stopPropagation();
                   const nextName = window.prompt("Rename screen", screen.name)?.trim();
-                  if (nextName) {
-                    renameScreen(screen.id, nextName);
-                  }
+                  if (nextName) renameScreen(screen.id, nextName);
                 }}
                 aria-label="Rename screen"
               >
@@ -70,13 +123,8 @@ export function ScreensPanel() {
                 disabled={project.screens.length <= 1}
                 onClick={(event) => {
                   event.stopPropagation();
-                  if (project.screens.length <= 1) {
-                    return;
-                  }
-                  const approved = window.confirm(`Delete ${screen.name}?`);
-                  if (approved) {
-                    deleteScreen(screen.id);
-                  }
+                  if (project.screens.length <= 1) return;
+                  if (window.confirm(`Delete ${screen.name}?`)) deleteScreen(screen.id);
                 }}
                 aria-label="Delete screen"
               >

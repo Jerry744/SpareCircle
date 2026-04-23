@@ -58,6 +58,9 @@ function checkStateNodeBoardLink(input: ProjectV2CrossRefInput): CrossRefResult 
 function checkVariantBoardLink(input: ProjectV2CrossRefInput): CrossRefResult {
   const { stateBoardsById, variantsById } = input;
   for (const board of Object.values(stateBoardsById)) {
+    if (board.variantIds.length === 0) {
+      return fail(`StateBoard "${board.id}" must contain at least one Variant`);
+    }
     for (const variantId of board.variantIds) {
       const variant = variantsById[variantId];
       if (!variant) {
@@ -72,6 +75,11 @@ function checkVariantBoardLink(input: ProjectV2CrossRefInput): CrossRefResult {
     if (!variantsById[board.canonicalVariantId]) {
       return fail(
         `StateBoard "${board.id}".canonicalVariantId "${board.canonicalVariantId}" is not a known Variant`,
+      );
+    }
+    if (!board.variantIds.includes(board.canonicalVariantId)) {
+      return fail(
+        `StateBoard "${board.id}".canonicalVariantId must be included in variantIds`,
       );
     }
   }

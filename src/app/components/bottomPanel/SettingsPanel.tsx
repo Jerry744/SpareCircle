@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getActiveScreenFromProject, useEditorBackend } from "../../backend/editorStore";
+import type { StateBoardSettingsContext } from "../BottomPanel.container";
 
 const COLOR_FORMAT_OPTIONS = [
   { value: "monochrome", label: "1-bit (Monochrome)" },
@@ -9,7 +10,7 @@ const COLOR_FORMAT_OPTIONS = [
   { value: "argb8888", label: "32-bit (ARGB8888)" },
 ] as const;
 
-export function SettingsPanel() {
+export function SettingsPanel({ stateBoardSettings }: { stateBoardSettings?: StateBoardSettingsContext }) {
   const {
     state: { project },
     actions: { setColorFormat, updateScreenMeta },
@@ -18,10 +19,19 @@ export function SettingsPanel() {
   const [widthDraft, setWidthDraft] = useState<string | null>(null);
   const [heightDraft, setHeightDraft] = useState<string | null>(null);
 
+  const displayWidth = stateBoardSettings?.board.meta.width ?? activeScreen.meta.width;
+  const displayHeight = stateBoardSettings?.board.meta.height ?? activeScreen.meta.height;
+
   const commitDimension = (key: "width" | "height", draft: string | null, fallback: number) => {
     const parsed = parseInt(draft ?? "", 10);
     const value = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-    updateScreenMeta(activeScreen.id, key, value);
+    if (stateBoardSettings) {
+      const width = key === "width" ? value : stateBoardSettings.board.meta.width;
+      const height = key === "height" ? value : stateBoardSettings.board.meta.height;
+      stateBoardSettings.onResolutionChange(width, height);
+    } else {
+      updateScreenMeta(activeScreen.id, key, value);
+    }
     if (key === "width") {
       setWidthDraft(null);
     } else {
@@ -46,12 +56,12 @@ export function SettingsPanel() {
           <div className="grid grid-cols-2 gap-2">
             <input
               type="text"
-              value={widthDraft ?? String(activeScreen.meta.width)}
+              value={widthDraft ?? String(displayWidth)}
               onChange={(event) => setWidthDraft(event.target.value)}
-              onBlur={() => commitDimension("width", widthDraft, activeScreen.meta.width)}
+              onBlur={() => commitDimension("width", widthDraft, displayWidth)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  commitDimension("width", widthDraft, activeScreen.meta.width);
+                  commitDimension("width", widthDraft, displayWidth);
                   event.currentTarget.blur();
                 }
                 if (event.key === "Escape") {
@@ -63,12 +73,12 @@ export function SettingsPanel() {
             />
             <input
               type="text"
-              value={heightDraft ?? String(activeScreen.meta.height)}
+              value={heightDraft ?? String(displayHeight)}
               onChange={(event) => setHeightDraft(event.target.value)}
-              onBlur={() => commitDimension("height", heightDraft, activeScreen.meta.height)}
+              onBlur={() => commitDimension("height", heightDraft, displayHeight)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  commitDimension("height", heightDraft, activeScreen.meta.height);
+                  commitDimension("height", heightDraft, displayHeight);
                   event.currentTarget.blur();
                 }
                 if (event.key === "Escape") {

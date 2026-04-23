@@ -8,6 +8,7 @@ import {
   type WidgetEventBindings,
   type WidgetNode,
 } from "../types";
+import type { ProjectSnapshotV2 } from "../types/projectV2";
 import { isValidHexColorString } from "../validation";
 import { cloneProject, getActiveScreen, transformProjectWidgets } from "../tree";
 
@@ -161,6 +162,22 @@ export function commitProjectChange(
     history: {
       past: [...state.history.past, cloneProject(state.project)],
       future: [],
+    },
+  };
+}
+
+export function touchVariant(
+  project: ProjectSnapshotV2,
+  variantId: string,
+  now = new Date().toISOString(),
+): ProjectSnapshotV2 {
+  const variant = project.variantsById[variantId];
+  if (!variant || variant.updatedAt === now) return project;
+  return {
+    ...project,
+    variantsById: {
+      ...project.variantsById,
+      [variantId]: { ...variant, updatedAt: now },
     },
   };
 }

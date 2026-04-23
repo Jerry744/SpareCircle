@@ -7,7 +7,10 @@ import {
   type WidgetNode,
   type WidgetType,
 } from "../types";
+import type { ProjectSnapshotV2 } from "../types/projectV2";
 import { isValidColorString, isValidHexColorString } from "./helpers";
+
+type WidgetStyleProject = Pick<ProjectSnapshot, "styleTokens"> | Pick<ProjectSnapshotV2, "styleTokens">;
 
 export function isEditableWidgetProperty(value: unknown): value is EditableWidgetProperty {
   return value === "x"
@@ -37,7 +40,7 @@ export function getDefaultWidgetTextColor(widgetType: WidgetType): string {
   return "#ffffff";
 }
 
-export function getStyleTokenById(project: ProjectSnapshot, tokenId: string | undefined): StyleToken | null {
+export function getStyleTokenById(project: WidgetStyleProject, tokenId: string | undefined): StyleToken | null {
   if (!tokenId) return null;
   return project.styleTokens.find((token) => token.id === tokenId) ?? null;
 }
@@ -50,7 +53,7 @@ export function getWidgetStyleTokenId(
 }
 
 export function resolveWidgetColor(
-  project: ProjectSnapshot,
+  project: WidgetStyleProject,
   widget: Pick<WidgetNode, "type" | "fill" | "fillTokenId" | "textColor" | "textColorTokenId">,
   propertyName: "fill" | "textColor",
 ): string {

@@ -12,6 +12,7 @@ export * from "./types/editor";
 // later phases migrate the reducer/persistence layer.
 export * from "./types/idPrefixes";
 export * from "./types/navigationMap";
+export * from "./types/navMapSelection";
 export * from "./types/stateBoard";
 export * from "./types/variant";
 export * from "./types/screenGroup";

@@ -7,6 +7,7 @@ import {
   useEditorBackend,
   type WidgetTreeNode,
 } from "../backend/editorStore";
+import { StateHierarchyPanel, type StateHierarchyContext } from "./stateBoard/StateHierarchyPanel";
 
 type DropPosition = "before" | "inside" | "after";
 
@@ -58,7 +59,18 @@ function collectVisibleIds(widget: WidgetTreeNode, expandedIds: Record<string, b
   return ids;
 }
 
-export function HierarchyPanel() {
+interface HierarchyPanelProps {
+  stateHierarchyContext?: StateHierarchyContext;
+}
+
+export function HierarchyPanel({ stateHierarchyContext }: HierarchyPanelProps = {}) {
+  if (stateHierarchyContext) {
+    return <StateHierarchyPanel key={stateHierarchyContext.board.id} context={stateHierarchyContext} />;
+  }
+  return <LegacyHierarchyPanel />;
+}
+
+function LegacyHierarchyPanel() {
   const {
     state: {
       project,
