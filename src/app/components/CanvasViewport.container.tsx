@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import type { DragEvent, MouseEvent } from "react";
 import {
   buildWidgetTree,
   getActiveScreenFromProject,
+  getRootWidgetIdForVariant,
   mapPaletteWidgetToType,
   useEditorBackend,
 } from "../backend/editorStore";
@@ -22,8 +24,14 @@ import { useCanvasResize } from "./canvasViewport/useCanvasResize";
 import { useCanvasGestures } from "./canvasViewport/useCanvasGestures";
 import { useCanvasKeyboardShortcuts } from "./canvasViewport/useCanvasKeyboardShortcuts";
 import { useCanvasWheel } from "./canvasViewport/useCanvasWheel";
+import type { StateBoardMeta } from "../backend/types/stateBoard";
 
-export function CanvasViewport() {
+interface CanvasViewportProps {
+  variantId?: string;
+  boardMeta?: StateBoardMeta;
+}
+
+export function CanvasViewport({ variantId, boardMeta }: CanvasViewportProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
@@ -62,7 +70,11 @@ export function CanvasViewport() {
   } = useEditorBackend();
 
   const activeScreen = getActiveScreenFromProject(project);
-  const rootTree = buildWidgetTree(project, activeScreen.rootNodeId);
+  const rootWidgetId =
+    (variantId ? getRootWidgetIdForVariant(project, variantId) : null) ??
+    activeScreen.rootNodeId;
+  const rootTree = buildWidgetTree(project, rootWidgetId);
+  const activeBoardMeta = boardMeta ?? activeScreen.meta;
 
   const screenToWorldRef = useCallback(
     (screenX: number, screenY: number) =>
@@ -127,7 +139,7 @@ export function CanvasViewport() {
     cancelInteraction,
   });
 
-  const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleCanvasDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
 
     const widgetType = mapPaletteWidgetToType(event.dataTransfer.getData("widget"));
@@ -149,7 +161,7 @@ export function CanvasViewport() {
     );
   };
 
-  const handleContextMenu = (event: React.MouseEvent) => {
+  const handleContextMenu = (event: MouseEvent) => {
     if (dragStateRef.current || marqueeRef.current) {
       return;
     }
@@ -159,13 +171,13 @@ export function CanvasViewport() {
     const dropContainer = getDropContainer(rootTree, world);
     setContextMenuData({
       targetId: hit?.widget.id ?? null,
-      dropParentId: dropContainer?.widget.id ?? activeScreen.rootNodeId,
+      dropParentId: dropContainer?.widget.id ?? rootWidgetId,
       dropLocalX: Math.round(world.x - (dropContainer?.absX ?? 0)),
       dropLocalY: Math.round(world.y - (dropContainer?.absY ?? 0)),
     });
   };
 
-  const handleMouseDown = (event: React.MouseEvent) => {
+  const handleMouseDown = (event: MouseEvent) => {
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement && activeElement !== event.target) {
       if (activeElement.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']")) {
@@ -265,7 +277,7 @@ export function CanvasViewport() {
     beginInteraction("move", moveDragIds, world);
   };
 
-  const handleMouseMove = (event: React.MouseEvent) => {
+  const handleMouseMove = (event: MouseEvent) => {
     if (isPanning && isSpacePressed) {
       const dx = event.clientX - lastMousePos.current.x;
       const dy = event.clientY - lastMousePos.current.y;
@@ -292,7 +304,7 @@ export function CanvasViewport() {
     if (dragStateRef.current) {
       const world = screenToWorldRef(event.clientX, event.clientY);
       snapGuidesRef.current = project.canvasSnap?.magnetSnapEnabled
-        ? collectSnapGuides(project, new Set(dragStateRef.current.widgetIds), activeScreen.meta)
+        ? collectSnapGuides(project, new Set(dragStateRef.current.widgetIds), activeBoardMeta)
         : null;
       updateInteraction(world);
     }
@@ -330,7 +342,7 @@ export function CanvasViewport() {
     <div className="h-full bg-neutral-900 flex flex-col">
       <CanvasViewportToolbar
         camera={camera}
-        screenSize={activeScreen.meta}
+        screenSize={activeBoardMeta}
         onZoomIn={() => setCamera((prev) => ({ ...prev, zoom: Math.min(5, prev.zoom * 1.2) }))}
         onZoomOut={() => setCamera((prev) => ({ ...prev, zoom: Math.max(0.1, prev.zoom / 1.2) }))}
         onResetView={() => setCamera({ x: 0, y: 0, zoom: 1 })}
