@@ -33,7 +33,7 @@ function pruneWidgetSubtree(widgetsById: Record<string, WidgetNode>, rootId: str
   return next;
 }
 
-function makeBlankRoot(id: string, name: string): WidgetNode {
+function makeRootFromMeta(id: string, name: string, width: number, height: number): WidgetNode {
   return {
     id,
     name: `${name} Root`,
@@ -42,8 +42,8 @@ function makeBlankRoot(id: string, name: string): WidgetNode {
     childrenIds: [],
     x: 0,
     y: 0,
-    width: DEFAULT_STATE_BOARD_META.width,
-    height: DEFAULT_STATE_BOARD_META.height,
+    width,
+    height,
     fill: DEFAULT_STATE_BOARD_META.fill,
     radius: 0,
     visible: true,
@@ -60,6 +60,7 @@ export function handleCreateVariant(
   if (project.variantsById[variantId]) return project;
   const name = uniqueVariantName(project, board, action.name);
   const now = action.now ?? new Date().toISOString();
+  const rootX = board.variantIds.length * (board.meta.width + 80);
   if (action.mode !== "blank") {
     const sourceVariantId = action.mode === "copy_of" ? action.sourceVariantId : board.canonicalVariantId;
     if (!sourceVariantId || !project.variantsById[sourceVariantId]) return project;
@@ -71,6 +72,8 @@ export function handleCreateVariant(
       now,
       idPrefix: action.rootWidgetId,
     });
+    const movedRoot = newVariant.rootWidgetId ? newWidgets[newVariant.rootWidgetId] : undefined;
+    if (movedRoot) newWidgets[movedRoot.id] = { ...movedRoot, x: rootX, y: 0, width: board.meta.width, height: board.meta.height };
     return {
       ...project,
       stateBoardsById: { ...project.stateBoardsById, [board.id]: { ...board, variantIds: [...board.variantIds, variantId] } },
@@ -84,7 +87,10 @@ export function handleCreateVariant(
     ...project,
     stateBoardsById: { ...project.stateBoardsById, [board.id]: { ...board, variantIds: [...board.variantIds, variantId] } },
     variantsById: { ...project.variantsById, [variantId]: variant },
-    widgetsById: { ...project.widgetsById, [rootWidgetId]: makeBlankRoot(rootWidgetId, name) },
+    widgetsById: {
+      ...project.widgetsById,
+      [rootWidgetId]: { ...makeRootFromMeta(rootWidgetId, name, board.meta.width, board.meta.height), x: rootX },
+    },
   };
 }
 
@@ -180,6 +186,55 @@ export function handleDeleteVariant(
   };
 }
 
+export function handleMoveVariantScreen(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "moveVariantScreen" }>,
+): ProjectSnapshotV2 {
+  const variant = project.variantsById[action.variantId];
+  if (!variant) return project;
+  const root = project.widgetsById[variant.rootWidgetId];
+  if (!root) return project;
+  if (root.x === action.position.x && root.y === action.position.y) return project;
+  const next: ProjectSnapshotV2 = {
+    ...project,
+    widgetsById: {
+      ...project.widgetsById,
+      [root.id]: { ...root, x: action.position.x, y: action.position.y },
+    },
+  };
+  return touchVariant(next, variant.id, action.now);
+}
+
+export function handleSetBoardResolution(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "setBoardResolution" }>,
+): ProjectSnapshotV2 {
+  const board = project.stateBoardsById[action.boardId];
+  if (!board || action.width <= 0 || action.height <= 0) return project;
+  if (board.meta.width === action.width && board.meta.height === action.height) return project;
+  const widgetsById = { ...project.widgetsById };
+  const variantsById = { ...project.variantsById };
+  for (const variantId of board.variantIds) {
+    const variant = variantsById[variantId];
+    const root = variant ? widgetsById[variant.rootWidgetId] : undefined;
+    if (!variant || !root) continue;
+    widgetsById[root.id] = { ...root, width: action.width, height: action.height };
+    variantsById[variant.id] = {
+      ...variant,
+      updatedAt: action.now ?? new Date().toISOString(),
+    };
+  }
+  return {
+    ...project,
+    stateBoardsById: {
+      ...project.stateBoardsById,
+      [board.id]: { ...board, meta: { ...board.meta, width: action.width, height: action.height } },
+    },
+    variantsById,
+    widgetsById,
+  };
+}
+
 export function variantReducer(project: ProjectSnapshotV2, action: VariantAction): ProjectSnapshotV2 {
   switch (action.type) {
     case "createVariant": return handleCreateVariant(project, action);
@@ -192,6 +247,8 @@ export function variantReducer(project: ProjectSnapshotV2, action: VariantAction
     case "setVariantStatus": return handleSetVariantStatus(project, action);
     case "reorderVariants": return handleReorderVariants(project, action);
     case "deleteVariant": return handleDeleteVariant(project, action);
+    case "moveVariantScreen": return handleMoveVariantScreen(project, action);
+    case "setBoardResolution": return handleSetBoardResolution(project, action);
     default: {
       const _exhaustive: never = action;
       void _exhaustive;

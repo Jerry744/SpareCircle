@@ -83,6 +83,10 @@ function IDELayoutInner() {
     useZoomRouter();
   const surfaceMode: EditorSurfaceMode =
     current.level === "map" ? "navmap" : "ui";
+  const currentBoard =
+    current.level === "board"
+      ? getBoardForState(navMapProject, current.stateNodeId)
+      : undefined;
 
   const handleNavMapAction = (action: NavMapAction) => {
     setNavMapProject((prev) => navigationMapReducer(prev, action));
@@ -148,7 +152,13 @@ function IDELayoutInner() {
             maxWidth: layout.leftSidebarCollapsed ? 0 : 260,
           }}
         >
-          <ScreensPanel />
+          <ScreensPanel
+            stateProject={navMapProject}
+            activeStateNodeId={current.level === "board" ? current.stateNodeId : undefined}
+            activeVariantId={current.level === "board" ? current.variantId : undefined}
+            onOpenStateVariant={(stateNodeId, variantId) => zoomInto(stateNodeId, { variantId })}
+            onVariantAction={handleVariantAction}
+          />
           <div className="h-px bg-neutral-900" />
           <HierarchyPanel />
         </div>
@@ -240,7 +250,17 @@ function IDELayoutInner() {
               maxHeight: layout.bottomPanelCollapsed ? 0 : 224,
             }}
           >
-            <BottomPanel />
+            <BottomPanel
+              stateBoardSettings={
+                currentBoard
+                  ? {
+                      board: currentBoard,
+                      onResolutionChange: (width, height) =>
+                        handleVariantAction({ type: "setBoardResolution", boardId: currentBoard.id, width, height }),
+                    }
+                  : undefined
+              }
+            />
           </div>
         </div>
 
@@ -256,6 +276,16 @@ function IDELayoutInner() {
           <RightSidebar
             surfaceMode={surfaceMode}
             navMapContext={navMapContext}
+            stateBoardContext={
+              current.level === "board" && currentBoard
+                ? {
+                    project: navMapProject,
+                    board: currentBoard,
+                    selectedVariantId: current.variantId,
+                    onVariantAction: handleVariantAction,
+                  }
+                : undefined
+            }
           />
         </div>
 
@@ -294,4 +324,12 @@ function getCanonicalVariantId(
   const boardId = project.navigationMap.stateNodes[stateNodeId]?.boardId;
   if (!boardId) return undefined;
   return project.stateBoardsById[boardId]?.canonicalVariantId;
+}
+
+function getBoardForState(
+  project: ProjectSnapshotV2,
+  stateNodeId: string,
+) {
+  const boardId = project.navigationMap.stateNodes[stateNodeId]?.boardId;
+  return boardId ? project.stateBoardsById[boardId] : undefined;
 }

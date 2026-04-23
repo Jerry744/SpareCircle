@@ -8,6 +8,10 @@ import type { ScreenGroup } from "../backend/types/screenGroup";
 import type { TransitionEventBinding } from "../backend/types/eventBinding";
 import { NavMapInspectorHost } from "./navigationMap/inspector/NavMapInspectorHost";
 import type { EditorSurfaceMode } from "./TopToolbar";
+import type { ProjectSnapshotV2 } from "../backend/types/projectV2";
+import type { StateBoard } from "../backend/types/stateBoard";
+import type { VariantAction } from "../backend/reducer/variantActions";
+import { StateBoardInspector } from "./stateBoard/StateBoardInspector";
 
 type RightSidebarTab = "state-inspector" | "inspector" | "events";
 
@@ -20,14 +24,22 @@ interface RightSidebarProps {
     transitionEventBindings?: Record<string, TransitionEventBinding>;
     onAction(action: NavMapAction): void;
   };
+  stateBoardContext?: {
+    project: ProjectSnapshotV2;
+    board: StateBoard;
+    selectedVariantId: string;
+    onVariantAction(action: VariantAction): void;
+  };
 }
 
 export function RightSidebar({
   surfaceMode = "ui",
   navMapContext,
+  stateBoardContext,
 }: RightSidebarProps = {}) {
   const [activeTab, setActiveTab] = useState<RightSidebarTab>("inspector");
   const isNavMapActive = surfaceMode === "navmap" && Boolean(navMapContext);
+  const isStateBoardActive = surfaceMode === "ui" && Boolean(stateBoardContext);
 
   const tabs = useMemo<Array<{ id: RightSidebarTab; label: string }>>(() => {
     if (!isNavMapActive) {
@@ -84,6 +96,13 @@ export function RightSidebar({
                 typeof window !== "undefined" ? window.confirm(message) : true,
               )
             }
+          />
+        ) : activeTab === "inspector" && isStateBoardActive && stateBoardContext ? (
+          <StateBoardInspector
+            project={stateBoardContext.project}
+            board={stateBoardContext.board}
+            selectedVariantId={stateBoardContext.selectedVariantId}
+            onVariantAction={stateBoardContext.onVariantAction}
           />
         ) : activeTab === "inspector" ? (
           <InspectorPanel showHeader={false} />

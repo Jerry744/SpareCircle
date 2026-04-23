@@ -21,4 +21,6 @@ export type VariantAction =
   | { type: "setCanonicalVariant"; boardId: string; variantId: string; now?: string }
   | { type: "setVariantStatus"; variantId: string; status: VariantStatus; now?: string }
   | { type: "reorderVariants"; boardId: string; orderedIds: string[] }
-  | { type: "deleteVariant"; variantId: string };
+  | { type: "deleteVariant"; variantId: string }
+  | { type: "moveVariantScreen"; variantId: string; position: { x: number; y: number }; now?: string }
+  | { type: "setBoardResolution"; boardId: string; width: number; height: number; now?: string };

@@ -7,7 +7,20 @@ import { ExportPanel } from "./bottomPanel/ExportPanel";
 import { SettingsPanel } from "./bottomPanel/SettingsPanel";
 import { ThemesPanel } from "./bottomPanel/ThemesPanel";
 
-function BottomPanelContent({ activeTab }: { activeTab: string }) {
+import type { StateBoard } from "../backend/types/stateBoard";
+
+export interface StateBoardSettingsContext {
+  board: StateBoard;
+  onResolutionChange(width: number, height: number): void;
+}
+
+function BottomPanelContent({
+  activeTab,
+  stateBoardSettings,
+}: {
+  activeTab: string;
+  stateBoardSettings?: StateBoardSettingsContext;
+}) {
   if (activeTab === "assets") {
     return <AssetsPanel />;
   }
@@ -24,12 +37,12 @@ function BottomPanelContent({ activeTab }: { activeTab: string }) {
     return <ExportPanel />;
   }
   if (activeTab === "settings") {
-    return <SettingsPanel />;
+    return <SettingsPanel stateBoardSettings={stateBoardSettings} />;
   }
   return null;
 }
 
-export function BottomPanel() {
+export function BottomPanel({ stateBoardSettings }: { stateBoardSettings?: StateBoardSettingsContext } = {}) {
   const [activeTab, setActiveTab] = useState<string>("assets");
 
   return (
@@ -52,7 +65,7 @@ export function BottomPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        <BottomPanelContent activeTab={activeTab} />
+        <BottomPanelContent activeTab={activeTab} stateBoardSettings={stateBoardSettings} />
       </div>
     </div>
   );

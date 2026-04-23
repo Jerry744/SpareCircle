@@ -140,6 +140,38 @@ describe("variantReducer", () => {
     });
     expect(invalid).toBe(project);
   });
+
+  it("moves screen frames and syncs resolution across every Variant root", () => {
+    let project = variantReducer(makeFixture(), {
+      type: "createVariant",
+      boardId: "board-alpha",
+      mode: "blank",
+      name: "Draft",
+      variantId: "variant-draft",
+      rootWidgetId: "draft-root",
+      now: NOW,
+    });
+    project = variantReducer(project, {
+      type: "moveVariantScreen",
+      variantId: "variant-draft",
+      position: { x: 640, y: 40 },
+      now: NOW,
+    });
+    expect(project.widgetsById["draft-root"].x).toBe(640);
+    expect(project.widgetsById["draft-root"].y).toBe(40);
+
+    const resized = variantReducer(project, {
+      type: "setBoardResolution",
+      boardId: "board-alpha",
+      width: 800,
+      height: 480,
+      now: NOW,
+    });
+    expect(resized.stateBoardsById["board-alpha"].meta).toMatchObject({ width: 800, height: 480 });
+    expect(resized.widgetsById["screen-root"]).toMatchObject({ width: 800, height: 480 });
+    expect(resized.widgetsById["draft-root"]).toMatchObject({ width: 800, height: 480 });
+    expect(parseProjectSnapshotV2(resized).ok).toBe(true);
+  });
 });
 
 describe("reassignCanonicalAfterMutation", () => {
