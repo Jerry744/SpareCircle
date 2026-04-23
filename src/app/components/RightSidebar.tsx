@@ -12,6 +12,7 @@ import type { ProjectSnapshotV2 } from "../backend/types/projectV2";
 import type { StateBoard } from "../backend/types/stateBoard";
 import type { VariantAction } from "../backend/reducer/variantActions";
 import { StateBoardInspector } from "./stateBoard/StateBoardInspector";
+import type { StateBoardSelection } from "./stateBoard/StateBoardShell";
 
 type RightSidebarTab = "state-inspector" | "inspector" | "events";
 
@@ -28,6 +29,7 @@ interface RightSidebarProps {
     project: ProjectSnapshotV2;
     board: StateBoard;
     selectedVariantId: string;
+    selection: StateBoardSelection;
     onVariantAction(action: VariantAction): void;
   };
 }
@@ -102,6 +104,7 @@ export function RightSidebar({
             project={stateBoardContext.project}
             board={stateBoardContext.board}
             selectedVariantId={stateBoardContext.selectedVariantId}
+            selection={stateBoardContext.selection}
             onVariantAction={stateBoardContext.onVariantAction}
           />
         ) : activeTab === "inspector" ? (

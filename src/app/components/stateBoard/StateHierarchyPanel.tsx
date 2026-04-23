@@ -6,6 +6,7 @@ import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { StateBoard } from "../../backend/types/stateBoard";
 import type { Variant } from "../../backend/types/variant";
 import { CONTAINER_WIDGET_TYPES, type WidgetNode } from "../../backend/types/widget";
+import type { StateBoardSelection } from "./StateBoardShell";
 
 type DropPosition = "before" | "inside" | "after";
 type DragSource =
@@ -18,7 +19,9 @@ export interface StateHierarchyContext {
   project: ProjectSnapshotV2;
   board: StateBoard;
   activeVariantId: string;
+  selection: StateBoardSelection;
   onSelectVariant(variantId: string): void;
+  onSelectionChange(selection: StateBoardSelection): void;
   onVariantAction(action: VariantAction): void;
 }
 
@@ -84,10 +87,9 @@ function readExpandedState(key: string): Record<string, boolean> {
 }
 
 export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.Element {
-  const { project, board, activeVariantId, onSelectVariant, onVariantAction } = context;
+  const { project, board, activeVariantId, selection, onSelectVariant, onSelectionChange, onVariantAction } = context;
   const storageKey = useMemo(() => getStorageKey(project, board), [project.projectName, board.id]);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>(() => readExpandedState(storageKey));
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dragging, setDragging] = useState<DragSource | null>(null);
   const [dropTarget, setDropTarget] = useState<{ key: string; position: DropPosition } | null>(null);
   const rangeAnchorRef = useRef<string | null>(null);
@@ -105,34 +107,54 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     })
     .filter((item): item is { variant: Variant; root: TreeNode } => Boolean(item)), [board.variantIds, project.variantsById, project.widgetsById]);
 
-  const visibleIds = useMemo(
-    () => screens.flatMap(({ root }) => collectVisibleIds(root, expandedIds)),
-    [screens, expandedIds],
-  );
-
   const clearDrag = () => {
     setDragging(null);
     setDropTarget(null);
   };
 
-  const selectRow = (widgetId: string, variantId: string, event: React.MouseEvent<HTMLDivElement>) => {
+  const selectScreenRow = (variantId: string, event: React.MouseEvent<HTMLDivElement>) => {
     onSelectVariant(variantId);
     const isCtrl = event.metaKey || event.ctrlKey;
+    const selectedVariantIds = selection.kind === "screen" ? selection.variantIds : [selection.variantId];
+    const nextVariantIds = isCtrl
+      ? selectedVariantIds.includes(variantId)
+        ? selectedVariantIds.filter((id) => id !== variantId)
+        : [...selectedVariantIds, variantId]
+      : [variantId];
+    onSelectionChange({ kind: "screen", variantIds: nextVariantIds });
+    rangeAnchorRef.current = null;
+  };
+
+  const selectWidgetRow = (
+    widgetId: string,
+    variantId: string,
+    variantVisibleIds: string[],
+    event: React.MouseEvent<HTMLDivElement>,
+  ) => {
+    onSelectVariant(variantId);
+    const isCtrl = event.metaKey || event.ctrlKey;
+    const currentWidgetIds = selection.kind === "widget" && selection.variantId === variantId ? selection.widgetIds : [];
     if (event.shiftKey) {
       const anchorId = rangeAnchorRef.current ?? widgetId;
-      const anchorIndex = visibleIds.indexOf(anchorId);
-      const currentIndex = visibleIds.indexOf(widgetId);
+      const anchorIndex = variantVisibleIds.indexOf(anchorId);
+      const currentIndex = variantVisibleIds.indexOf(widgetId);
       const start = anchorIndex < 0 ? currentIndex : Math.min(anchorIndex, currentIndex);
       const end = anchorIndex < 0 ? currentIndex : Math.max(anchorIndex, currentIndex);
-      const range = visibleIds.slice(start, end + 1);
-      setSelectedIds(isCtrl ? [...new Set([...selectedIds, ...range])] : range);
+      const range = variantVisibleIds.slice(start, end + 1);
+      onSelectionChange({
+        kind: "widget",
+        variantId,
+        widgetIds: isCtrl ? [...new Set([...currentWidgetIds, ...range])] : range,
+      });
       return;
     }
-    setSelectedIds(isCtrl
-      ? selectedIds.includes(widgetId)
-        ? selectedIds.filter((id) => id !== widgetId)
-        : [...selectedIds, widgetId]
-      : [widgetId]);
+
+    const widgetIds = isCtrl
+      ? currentWidgetIds.includes(widgetId)
+        ? currentWidgetIds.filter((id) => id !== widgetId)
+        : [...currentWidgetIds, widgetId]
+      : [widgetId];
+    onSelectionChange({ kind: "widget", variantId, widgetIds });
     rangeAnchorRef.current = widgetId;
   };
 
@@ -167,8 +189,11 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     const isRoot = widget.id === root.id;
     const hasChildren = widget.children.length > 0;
     const expanded = isRoot ? true : expandedIds[widget.id] ?? true;
+    const variantVisibleIds = collectVisibleIds(root, expandedIds).filter((id) => id !== root.id);
     const isActiveScreen = isRoot && variant.id === activeVariantId;
-    const isSelected = selectedIds.includes(widget.id) || isActiveScreen;
+    const isSelected = isRoot
+      ? selection.kind === "screen" && selection.variantIds.includes(variant.id)
+      : selection.kind === "widget" && selection.variantId === variant.id && selection.widgetIds.includes(widget.id);
     const isDropTarget = dropTarget?.key === widget.id;
     const dropBefore = isDropTarget && dropTarget.position === "before";
     const dropInside = isDropTarget && dropTarget.position === "inside";
@@ -179,10 +204,18 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
       <div key={widget.id}>
         <div
           className={`relative flex items-center gap-1 px-2 py-1 rounded cursor-pointer border border-transparent transition-colors ${
-            isSelected ? "bg-highlight-900 text-white" : "hover:bg-neutral-600 text-neutral-200"
+            isSelected
+              ? "bg-highlight-900 text-white"
+              : isActiveScreen
+                ? "bg-neutral-700 text-neutral-100"
+                : "hover:bg-neutral-600 text-neutral-200"
           }`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
-          onClick={(event) => selectRow(widget.id, variant.id, event)}
+          onClick={(event) =>
+            isRoot
+              ? selectScreenRow(variant.id, event)
+              : selectWidgetRow(widget.id, variant.id, variantVisibleIds, event)
+          }
           draggable
           onDragStart={(event) => {
             const source: DragSource = isRoot ? { kind: "screen", variantId: variant.id } : { kind: "widget", widgetId: widget.id };

@@ -1,19 +1,24 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Star } from "lucide-react";
-import type { Point } from "../../backend/editorStore";
 import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { StateBoard } from "../../backend/types/stateBoard";
 import type { Variant } from "../../backend/types/variant";
 import type { VariantAction } from "../../backend/reducer/variantActions";
+import { mapPaletteWidgetToType, type Point } from "../../backend/editorStore";
+import { getNextWidgetId } from "../../backend/widgets";
 import type { Camera, MarqueeState } from "../canvasViewport/types";
 import { screenToWorldForCamera } from "../canvasViewport/utils";
 import { useCanvasGestures } from "../canvasViewport/useCanvasGestures";
 import { useCanvasResize } from "../canvasViewport/useCanvasResize";
+import type { StateBoardSelection } from "./StateBoardShell";
+import { resolveStateBoardWidgetDropTarget } from "./stateBoardDrop";
 
 interface StateBoardSurfaceProps {
   project: ProjectSnapshotV2;
   board: StateBoard;
   activeVariantId: string;
+  selection: StateBoardSelection;
+  onSelectionChange(selection: StateBoardSelection): void;
   onSelectVariant(variantId: string): void;
   onVariantAction(action: VariantAction): void;
 }
@@ -27,13 +32,14 @@ export function StateBoardSurface({
   project,
   board,
   activeVariantId,
+  selection,
+  onSelectionChange,
   onSelectVariant,
   onVariantAction,
 }: StateBoardSurfaceProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
-  const [selectedIds, setSelectedIds] = useState<string[]>([activeVariantId]);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [marquee, setMarquee] = useState<MarqueeState | null>(null);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
@@ -87,6 +93,8 @@ export function StateBoardSurface({
     return out;
   }, [project.widgetsById, variants]);
 
+  const selectedVariantIds = selection.kind === "screen" ? selection.variantIds : [selection.variantId];
+
   const hitTest = (world: Point): string | null => {
     for (let index = variants.length - 1; index >= 0; index -= 1) {
       const frame = frameById[variants[index].id];
@@ -100,10 +108,12 @@ export function StateBoardSurface({
 
   const updateSelection = (variantId: string, additive: boolean) => {
     onSelectVariant(variantId);
-    setSelectedIds((prev) => {
-      if (!additive) return [variantId];
-      return prev.includes(variantId) ? prev.filter((id) => id !== variantId) : [...prev, variantId];
-    });
+    const nextVariantIds = additive
+      ? selectedVariantIds.includes(variantId)
+        ? selectedVariantIds.filter((id) => id !== variantId)
+        : [...selectedVariantIds, variantId]
+      : [variantId];
+    onSelectionChange({ kind: "screen", variantIds: nextVariantIds });
   };
 
   const startDrag = (variantIds: string[], world: Point) => {
@@ -125,7 +135,7 @@ export function StateBoardSurface({
   const finishMarquee = () => {
     if (!marquee) return;
     const nextIds = collectFrameHits(frameById, marquee);
-    setSelectedIds(nextIds);
+    onSelectionChange({ kind: "screen", variantIds: nextIds });
     if (nextIds[0]) onSelectVariant(nextIds[0]);
     setMarquee(null);
   };
@@ -144,10 +154,10 @@ export function StateBoardSurface({
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
     if (!hit) {
       setMarquee({ startWorld: world, currentWorld: world, additive });
-      if (!additive) setSelectedIds([]);
+      if (!additive) onSelectionChange({ kind: "screen", variantIds: [] });
       return;
     }
-    const dragIds = selectedIds.includes(hit) && !additive ? selectedIds : [hit];
+    const dragIds = selectedVariantIds.includes(hit) && !additive ? selectedVariantIds : [hit];
     updateSelection(hit, additive);
     startDrag(dragIds, world);
   };
@@ -185,6 +195,29 @@ export function StateBoardSurface({
     setDrag(null);
   };
 
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    const widgetType = mapPaletteWidgetToType(event.dataTransfer.getData("widget"));
+    if (!widgetType) return;
+
+    const world = screenToWorld(event.clientX, event.clientY);
+    const dropTarget = resolveStateBoardWidgetDropTarget({ project, board, world });
+    if (!dropTarget?.variantId) return;
+
+    const widgetId = getNextWidgetId(project, widgetType);
+    onVariantAction({
+      type: "insertVariantWidget",
+      variantId: dropTarget.variantId,
+      parentId: dropTarget.parentId,
+      widgetType,
+      position: { x: dropTarget.localX, y: dropTarget.localY },
+      widgetId,
+    });
+    onSelectVariant(dropTarget.variantId);
+    onSelectionChange({ kind: "widget", variantId: dropTarget.variantId, widgetIds: [widgetId] });
+  };
+
   return (
     <div
       ref={containerRef}
@@ -195,6 +228,12 @@ export function StateBoardSurface({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onDragOver={(event) => {
+        if (mapPaletteWidgetToType(event.dataTransfer.getData("widget"))) {
+          event.preventDefault();
+        }
+      }}
+      onDrop={handleDrop}
       onKeyDown={(event) => {
         if (event.code === "Space" && !isSpacePressed) {
           event.preventDefault();
@@ -218,7 +257,7 @@ export function StateBoardSurface({
           const frame = frameById[variant.id];
           if (!frame) return null;
           const isCanonical = board.canonicalVariantId === variant.id;
-          const isSelected = selectedIds.includes(variant.id) || activeVariantId === variant.id;
+          const isSelected = selectedVariantIds.includes(variant.id) || activeVariantId === variant.id;
           return (
             <section
               key={variant.id}

@@ -5,12 +5,18 @@ import { StateBoardEmpty } from "./StateBoardEmpty";
 import { StateBoardHeader } from "./StateBoardHeader";
 import { StateBoardSurface } from "./StateBoardSurface";
 
+export type StateBoardSelection =
+  | { kind: "screen"; variantIds: string[] }
+  | { kind: "widget"; variantId: string; widgetIds: string[] };
+
 export interface StateBoardShellProps {
   project: ProjectSnapshotV2;
   stateNodeId: string;
   variantId: string;
   projectName: string;
+  selection: StateBoardSelection;
   onGoToMap(): void;
+  onSelectionChange(selection: StateBoardSelection): void;
   onReplaceVariant(variantId: string): void;
   onVariantAction(action: VariantAction): void;
 }
@@ -20,7 +26,9 @@ export function StateBoardShell({
   stateNodeId,
   variantId,
   projectName,
+  selection,
   onGoToMap,
+  onSelectionChange,
   onReplaceVariant,
   onVariantAction,
 }: StateBoardShellProps): JSX.Element {
@@ -44,6 +52,8 @@ export function StateBoardShell({
           project={project}
           board={resolved.board}
           activeVariantId={resolved.variant.id}
+          selection={selection}
+          onSelectionChange={onSelectionChange}
           onSelectVariant={onReplaceVariant}
           onVariantAction={onVariantAction}
         />

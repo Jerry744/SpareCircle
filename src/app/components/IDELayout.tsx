@@ -22,7 +22,7 @@ import { variantReducer } from "../backend/reducer/variantReducer";
 import { ChevronRight } from "lucide-react";
 import { ZoomRouter } from "./zoomNavigator/ZoomRouter";
 import { ZoomRouterProvider, useZoomRouter } from "./zoomNavigator/useZoomRouter";
-import { StateBoardShell } from "./stateBoard/StateBoardShell";
+import { StateBoardShell, type StateBoardSelection } from "./stateBoard/StateBoardShell";
 import { parseProjectSnapshotV2 } from "../backend/validation";
 
 const STATE_PROJECT_STORAGE_KEY = "sparecircle:stateProject:v2";
@@ -94,6 +94,7 @@ function IDELayoutInner() {
   const [navMapSelection, setNavMapSelection] = useState<NavMapSelection>(
     EMPTY_NAV_MAP_SELECTION,
   );
+  const [stateBoardSelection, setStateBoardSelection] = useState<StateBoardSelection | null>(null);
   const { current, zoomInto, goToMap, replaceVariant, rememberNavViewport, rememberNavSelection } =
     useZoomRouter();
   const surfaceMode: EditorSurfaceMode =
@@ -102,6 +103,10 @@ function IDELayoutInner() {
     current.level === "board"
       ? getBoardForState(navMapProject, current.stateNodeId)
       : undefined;
+  const resolvedStateBoardSelection =
+    current.level === "board"
+      ? stateBoardSelection ?? { kind: "screen", variantIds: [current.variantId] }
+      : null;
 
   const handleNavMapAction = (action: NavMapAction) => {
     setNavMapProject((prev) => navigationMapReducer(prev, action));
@@ -127,6 +132,10 @@ function IDELayoutInner() {
     if (targetNodeId && fallbackVariantId) {
       zoomInto(targetNodeId, { variantId: fallbackVariantId });
     }
+  };
+  const handleOpenStateVariant = (stateNodeId: string, variantId: string) => {
+    setStateBoardSelection({ kind: "screen", variantIds: [variantId] });
+    zoomInto(stateNodeId, { variantId });
   };
 
   const navMapContext = useMemo(
@@ -154,6 +163,27 @@ function IDELayoutInner() {
     window.localStorage.setItem(STATE_PROJECT_STORAGE_KEY, JSON.stringify(navMapProject));
   }, [navMapProject]);
 
+  useEffect(() => {
+    if (current.level !== "board" || !currentBoard) return;
+    setStateBoardSelection((prev) => {
+      if (!prev) {
+        return { kind: "screen", variantIds: [current.variantId] };
+      }
+      if (prev.kind === "screen") {
+        const variantIds = prev.variantIds.filter((variantId) => currentBoard.variantIds.includes(variantId));
+        return variantIds.length === prev.variantIds.length ? prev : { kind: "screen", variantIds };
+      }
+      if (!currentBoard.variantIds.includes(prev.variantId)) {
+        return { kind: "screen", variantIds: [current.variantId] };
+      }
+      const widgetIds = prev.widgetIds.filter((widgetId) => Boolean(navMapProject.widgetsById[widgetId]));
+      if (widgetIds.length === 0) {
+        return { kind: "screen", variantIds: [prev.variantId] };
+      }
+      return widgetIds.length === prev.widgetIds.length ? prev : { kind: "widget", variantId: prev.variantId, widgetIds };
+    });
+  }, [current.level, current.variantId, currentBoard, navMapProject.widgetsById]);
+
   return (
     <div className="sc-editor-shell h-screen w-screen flex flex-col bg-neutral-900 text-neutral-100">
       <TopToolbar
@@ -175,7 +205,7 @@ function IDELayoutInner() {
             stateProject={navMapProject}
             activeStateNodeId={current.level === "board" ? current.stateNodeId : undefined}
             activeVariantId={current.level === "board" ? current.variantId : undefined}
-            onOpenStateVariant={(stateNodeId, variantId) => zoomInto(stateNodeId, { variantId })}
+            onOpenStateVariant={handleOpenStateVariant}
             onVariantAction={handleVariantAction}
           />
           <div className="h-px bg-neutral-900" />
@@ -186,7 +216,9 @@ function IDELayoutInner() {
                     project: navMapProject,
                     board: currentBoard,
                     activeVariantId: current.variantId,
+                    selection: resolvedStateBoardSelection ?? { kind: "screen", variantIds: [current.variantId] },
                     onSelectVariant: replaceVariant,
+                    onSelectionChange: setStateBoardSelection,
                     onVariantAction: handleVariantAction,
                   }
                 : undefined
@@ -245,7 +277,9 @@ function IDELayoutInner() {
                   projectName={navMapProject.projectName}
                   stateNodeId={stateNodeId}
                   variantId={variantId}
+                  selection={resolvedStateBoardSelection ?? { kind: "screen", variantIds: [variantId] }}
                   onGoToMap={goToMap}
+                  onSelectionChange={setStateBoardSelection}
                   onReplaceVariant={replaceVariant}
                   onVariantAction={handleVariantAction}
                 />
@@ -313,6 +347,7 @@ function IDELayoutInner() {
                     project: navMapProject,
                     board: currentBoard,
                     selectedVariantId: current.variantId,
+                    selection: resolvedStateBoardSelection ?? { kind: "screen", variantIds: [current.variantId] },
                     onVariantAction: handleVariantAction,
                   }
                 : undefined

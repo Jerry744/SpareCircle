@@ -15,7 +15,6 @@ import { renderCanvas } from "./canvasViewport/render";
 import type { Camera, DragState, MarqueeState } from "./canvasViewport/types";
 import {
   filterTopLevelIds,
-  getDropContainer,
   getHitTarget,
   screenToWorldForCamera,
 } from "./canvasViewport/utils";
@@ -25,6 +24,7 @@ import { useCanvasGestures } from "./canvasViewport/useCanvasGestures";
 import { useCanvasKeyboardShortcuts } from "./canvasViewport/useCanvasKeyboardShortcuts";
 import { useCanvasWheel } from "./canvasViewport/useCanvasWheel";
 import type { StateBoardMeta } from "../backend/types/stateBoard";
+import { resolveWidgetDropTarget } from "./canvasViewport/dropTarget";
 
 interface CanvasViewportProps {
   variantId?: string;
@@ -148,16 +148,16 @@ export function CanvasViewport({ variantId, boardMeta }: CanvasViewportProps = {
     }
 
     const world = screenToWorldRef(event.clientX, event.clientY);
-    const parentInfo = getDropContainer(rootTree, world);
-    if (!parentInfo) {
+    const dropTarget = resolveWidgetDropTarget({ rootTree, world });
+    if (!dropTarget) {
       return;
     }
 
     addWidget(
-      parentInfo.widget.id,
+      dropTarget.parentId,
       widgetType,
-      Math.round(world.x - parentInfo.absX),
-      Math.round(world.y - parentInfo.absY),
+      dropTarget.localX,
+      dropTarget.localY,
     );
   };
 
