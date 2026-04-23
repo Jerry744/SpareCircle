@@ -215,6 +215,67 @@ describe("variantReducer", () => {
     expect(hidden.widgetsById["button-a"].visible).toBe(false);
     expect(parseProjectSnapshotV2(hidden).ok).toBe(true);
   });
+
+  it("inserts widgets into the targeted Variant subtree and rejects cross-variant parents", () => {
+    const project = variantReducer(makeFixture(), {
+      type: "createVariant",
+      boardId: "board-alpha",
+      mode: "blank",
+      name: "Draft",
+      variantId: "variant-draft",
+      rootWidgetId: "draft-root",
+      now: NOW,
+    });
+
+    const withPanel = {
+      ...project,
+      widgetsById: {
+        ...project.widgetsById,
+        "draft-root": { ...project.widgetsById["draft-root"], childrenIds: ["draft-panel"] },
+        "draft-panel": {
+          id: "draft-panel",
+          name: "Draft Panel",
+          type: "Panel",
+          parentId: "draft-root",
+          childrenIds: [],
+          x: 40,
+          y: 24,
+          width: 200,
+          height: 120,
+          visible: true,
+        } satisfies WidgetNode,
+      },
+    };
+
+    const inserted = variantReducer(withPanel, {
+      type: "insertVariantWidget",
+      variantId: "variant-draft",
+      parentId: "draft-panel",
+      widgetType: "Button",
+      position: { x: 18, y: 26 },
+      widgetId: "draft-button",
+      now: NOW,
+    });
+    expect(inserted.widgetsById["draft-panel"].childrenIds).toEqual(["draft-button"]);
+    expect(inserted.widgetsById["draft-button"]).toMatchObject({
+      parentId: "draft-panel",
+      type: "Button",
+      x: 18,
+      y: 26,
+    });
+
+    const rejected = variantReducer(inserted, {
+      type: "insertVariantWidget",
+      variantId: "variant-draft",
+      parentId: "screen-root",
+      widgetType: "Label",
+      position: { x: 10, y: 10 },
+      widgetId: "bad-cross-variant",
+      now: NOW,
+    });
+    expect(rejected).toBe(inserted);
+    expect(parseProjectSnapshotV2(inserted).ok).toBe(true);
+  });
 });
 
 describe("reassignCanonicalAfterMutation", () => {
