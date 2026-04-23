@@ -27,6 +27,7 @@ export {
   EditorBackendProvider,
   useEditorBackend,
   getActiveScreenFromProject,
+  getRootWidgetIdForVariant,
 } from "./context";
 
 export {

@@ -35,6 +35,7 @@ import type {
   WidgetEventType,
   WidgetType,
 } from "./types";
+import type { ProjectSnapshotV2 } from "./types/projectV2";
 
 const EditorBackendContext = createContext<EditorBackendValue | null>(null);
 
@@ -239,4 +240,17 @@ export function useEditorBackend() {
 
 export function getActiveScreenFromProject(project: ProjectSnapshot) {
   return getActiveScreen(project);
+}
+
+export function getRootWidgetIdForVariant(
+  project: ProjectSnapshot | ProjectSnapshotV2,
+  variantId: string,
+): string | null {
+  const candidate = (
+    project as ProjectSnapshotV2
+  ).variantsById?.[variantId]?.rootWidgetId;
+  if (!candidate) return null;
+  return (
+    (project as ProjectSnapshotV2).widgetsById?.[candidate] ? candidate : null
+  );
 }
