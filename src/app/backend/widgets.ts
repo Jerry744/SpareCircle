@@ -4,6 +4,9 @@ import {
   type WidgetNode,
   type WidgetType,
 } from "./types";
+import type { ProjectSnapshotV2 } from "./types/projectV2";
+
+type WidgetCatalog = Pick<ProjectSnapshot, "widgetsById"> | Pick<ProjectSnapshotV2, "widgetsById">;
 
 export function mapPaletteWidgetToType(widgetId: string): WidgetType | null {
   const normalized = widgetId.trim().toLowerCase();
@@ -54,7 +57,7 @@ function getDefaultWidgetSize(widgetType: WidgetType): { width: number; height: 
   }
 }
 
-function getNextWidgetId(project: ProjectSnapshot, widgetType: WidgetType): string {
+export function getNextWidgetId(project: WidgetCatalog, widgetType: WidgetType): string {
   const prefix = widgetType.toLowerCase();
   const usedIds = new Set<string>(Object.keys(project.widgetsById));
 
@@ -66,8 +69,14 @@ function getNextWidgetId(project: ProjectSnapshot, widgetType: WidgetType): stri
   return `${prefix}-${counter}`;
 }
 
-export function createWidgetNode(project: ProjectSnapshot, widgetType: WidgetType, x: number, y: number): WidgetNode {
-  const id = getNextWidgetId(project, widgetType);
+export function createWidgetNode(
+  project: WidgetCatalog,
+  widgetType: WidgetType,
+  x: number,
+  y: number,
+  idOverride?: string,
+): WidgetNode {
+  const id = idOverride ?? getNextWidgetId(project, widgetType);
   const baseSize = getDefaultWidgetSize(widgetType);
 
   if (widgetType === "Label") {

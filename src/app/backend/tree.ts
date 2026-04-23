@@ -5,8 +5,10 @@ import {
   type WidgetNode,
   type WidgetType,
 } from "./types";
+import type { ProjectSnapshotV2 } from "./types/projectV2";
 
 export type WidgetTreeNode = WidgetNode & { children: WidgetTreeNode[] };
+type WidgetTreeSource = Pick<ProjectSnapshot, "widgetsById"> | Pick<ProjectSnapshotV2, "widgetsById">;
 
 export type WidgetLocation = {
   parentId: string | null;
@@ -30,7 +32,7 @@ export function canContainChildren(widgetType: WidgetType): boolean {
   return CONTAINER_WIDGET_TYPES.has(widgetType);
 }
 
-export function buildWidgetTree(project: ProjectSnapshot, rootNodeId: string): WidgetTreeNode | null {
+export function buildWidgetTree(project: WidgetTreeSource, rootNodeId: string): WidgetTreeNode | null {
   const build = (widgetId: string, visiting: Set<string>): WidgetTreeNode | null => {
     const node = project.widgetsById[widgetId];
     if (!node || visiting.has(widgetId)) {
