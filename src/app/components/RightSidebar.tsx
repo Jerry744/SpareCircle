@@ -12,7 +12,7 @@ import type { ProjectSnapshotV2 } from "../backend/types/projectV2";
 import type { StateBoard } from "../backend/types/stateBoard";
 import type { VariantAction } from "../backend/reducer/variantActions";
 import { StateBoardInspector } from "./stateBoard/StateBoardInspector";
-import type { StateBoardSelection } from "./stateBoard/StateBoardShell";
+import type { StateBoardSelection } from "./stateBoard/stateBoardSelection";
 
 type RightSidebarTab = "state-inspector" | "inspector" | "events";
 

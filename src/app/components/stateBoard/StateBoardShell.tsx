@@ -4,10 +4,9 @@ import { resolveBoardView } from "../../backend/stateBoard/boardResolver";
 import { StateBoardEmpty } from "./StateBoardEmpty";
 import { StateBoardHeader } from "./StateBoardHeader";
 import { StateBoardSurface } from "./StateBoardSurface";
+import type { StateBoardSelection } from "./stateBoardSelection";
 
-export type StateBoardSelection =
-  | { kind: "screen"; variantIds: string[] }
-  | { kind: "widget"; variantId: string; widgetIds: string[] };
+export type { StateBoardSelection } from "./stateBoardSelection";
 
 export interface StateBoardShellProps {
   project: ProjectSnapshotV2;

@@ -24,6 +24,7 @@ import { ZoomRouter } from "./zoomNavigator/ZoomRouter";
 import { ZoomRouterProvider, useZoomRouter } from "./zoomNavigator/useZoomRouter";
 import { StateBoardShell, type StateBoardSelection } from "./stateBoard/StateBoardShell";
 import { parseProjectSnapshotV2 } from "../backend/validation";
+import { normalizeStateBoardSelection } from "./stateBoard/stateBoardSelection";
 
 const STATE_PROJECT_STORAGE_KEY = "sparecircle:stateProject:v2";
 
@@ -173,14 +174,23 @@ function IDELayoutInner() {
         const variantIds = prev.variantIds.filter((variantId) => currentBoard.variantIds.includes(variantId));
         return variantIds.length === prev.variantIds.length ? prev : { kind: "screen", variantIds };
       }
-      if (!currentBoard.variantIds.includes(prev.variantId)) {
-        return { kind: "screen", variantIds: [current.variantId] };
+      if (prev.kind === "widget") {
+        if (!currentBoard.variantIds.includes(prev.variantId)) {
+          return { kind: "screen", variantIds: [current.variantId] };
+        }
+        const widgetIds = prev.widgetIds.filter((widgetId) => Boolean(navMapProject.widgetsById[widgetId]));
+        if (widgetIds.length === 0) {
+          return { kind: "screen", variantIds: [prev.variantId] };
+        }
+        return widgetIds.length === prev.widgetIds.length ? prev : { kind: "widget", variantId: prev.variantId, widgetIds };
       }
-      const widgetIds = prev.widgetIds.filter((widgetId) => Boolean(navMapProject.widgetsById[widgetId]));
-      if (widgetIds.length === 0) {
-        return { kind: "screen", variantIds: [prev.variantId] };
-      }
-      return widgetIds.length === prev.widgetIds.length ? prev : { kind: "widget", variantId: prev.variantId, widgetIds };
+      const variantIds = prev.variantIds.filter((variantId) => currentBoard.variantIds.includes(variantId));
+      const widgetIdsByVariant = Object.fromEntries(
+        Object.entries(prev.widgetIdsByVariant)
+          .filter(([variantId]) => currentBoard.variantIds.includes(variantId))
+          .map(([variantId, widgetIds]) => [variantId, widgetIds.filter((widgetId) => Boolean(navMapProject.widgetsById[widgetId]))]),
+      );
+      return normalizeStateBoardSelection({ variantIds, widgetIdsByVariant });
     });
   }, [current.level, current.variantId, currentBoard, navMapProject.widgetsById]);
 

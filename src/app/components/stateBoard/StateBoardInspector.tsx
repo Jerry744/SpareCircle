@@ -2,7 +2,7 @@ import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { StateBoard } from "../../backend/types/stateBoard";
 import type { VariantAction } from "../../backend/reducer/variantActions";
 import type { WidgetNode } from "../../backend/types/widget";
-import type { StateBoardSelection } from "./StateBoardShell";
+import type { StateBoardSelection } from "./stateBoardSelection";
 
 interface StateBoardInspectorProps {
   project: ProjectSnapshotV2;
@@ -19,6 +19,25 @@ export function StateBoardInspector({
   selection,
   onVariantAction,
 }: StateBoardInspectorProps): JSX.Element {
+  if (selection.kind === "mixed") {
+    const widgetCount = Object.values(selection.widgetIdsByVariant).reduce((sum, ids) => sum + ids.length, 0);
+    return (
+      <div className="flex h-full flex-col">
+        <div className="border-b border-neutral-900 bg-neutral-800/60 p-3">
+          <div className="mb-1 text-xs text-neutral-400">MIXED SELECTION</div>
+          <div className="font-semibold text-neutral-100">
+            {selection.variantIds.length} screens, {widgetCount} widgets
+          </div>
+        </div>
+        <div className="space-y-4 p-3 text-sm text-neutral-300">
+          <div className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2">
+            Mixed screen/widget selection is active. Inspector editing is not wired for mixed V2 selections yet.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (selection.kind === "widget") {
     const variant = project.variantsById[selection.variantId];
     const selectedWidgets = selection.widgetIds

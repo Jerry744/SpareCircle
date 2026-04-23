@@ -12,9 +12,19 @@ import { renderCanvasBackdrop, renderWidgetTree } from "../canvasViewport/render
 import { screenToWorldForCamera } from "../canvasViewport/utils";
 import { useCanvasGestures } from "../canvasViewport/useCanvasGestures";
 import { useCanvasResize } from "../canvasViewport/useCanvasResize";
-import type { StateBoardSelection } from "./StateBoardShell";
 import { resolveStateBoardWidgetDropTarget } from "./stateBoardDrop";
 import { filterTopLevelWidgetIds, getStateBoardWidgetHit } from "./stateBoardHitTest";
+import { computeStateBoardMarqueeSelection } from "./stateBoardMarquee";
+import { StateBoardContextMenuContent, type StateBoardContextMenuData } from "./stateBoardContextMenu";
+import {
+  getSelectedVariantIds,
+  getSelectedWidgetIds,
+  getSelectedWidgetIdsByVariant,
+  getSelectedWidgetIdsForVariant,
+  normalizeStateBoardSelection,
+  type StateBoardSelection,
+} from "./stateBoardSelection";
+import { ContextMenu, ContextMenuTrigger } from "../ui/context-menu";
 
 interface StateBoardSurfaceProps {
   project: ProjectSnapshotV2;
@@ -47,6 +57,7 @@ export function StateBoardSurface({
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [isMiddlePanning, setIsMiddlePanning] = useState(false);
+  const [contextMenuData, setContextMenuData] = useState<StateBoardContextMenuData | null>(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const cameraRef = useRef(camera);
@@ -99,8 +110,9 @@ export function StateBoardSurface({
     return out;
   }, [project, variants]);
 
-  const selectedVariantIds = selection.kind === "screen" ? selection.variantIds : [selection.variantId];
-  const selectedWidgetIds = selection.kind === "widget" ? selection.widgetIds : [];
+  const selectedVariantIds = getSelectedVariantIds(selection);
+  const selectedWidgetIds = getSelectedWidgetIds(selection);
+  const selectedWidgetIdsByVariant = getSelectedWidgetIdsByVariant(selection);
 
   const render = useCallback(() => {
     const canvas = canvasRef.current;
@@ -118,7 +130,7 @@ export function StateBoardSurface({
         ctx,
         project,
         rootTree: rootTreesByVariant[variant.id],
-        selectedWidgetIds: selection.kind === "widget" && selection.variantId === variant.id ? selectedWidgetIds : [],
+        selectedWidgetIds: selectedWidgetIdsByVariant[variant.id] ?? [],
         imageCache: imageCacheRef.current,
         rerender: render,
         offsetX: root.x,
@@ -126,7 +138,7 @@ export function StateBoardSurface({
       });
     }
     ctx.restore();
-  }, [camera, project, rootTreesByVariant, selectedWidgetIds, selection, variants]);
+  }, [camera, project, rootTreesByVariant, selectedWidgetIdsByVariant, variants]);
 
   useCanvasResize(canvasRef, containerRef, render);
   useCanvasGestures(containerRef, canvasRef, setCamera, screenToWorld);
@@ -183,9 +195,29 @@ export function StateBoardSurface({
 
   const finishMarquee = () => {
     if (!marquee) return;
-    const nextIds = collectFrameHits(frameById, marquee);
-    onSelectionChange({ kind: "screen", variantIds: nextIds });
-    if (nextIds[0]) onSelectVariant(nextIds[0]);
+    const hitSelection = computeStateBoardMarqueeSelection({
+      variantIds: variants.map((variant) => variant.id),
+      frameById,
+      rootTreesByVariant,
+      marquee,
+    });
+    const nextSelection = marquee.additive
+      ? normalizeStateBoardSelection({
+          variantIds: [...selectedVariantIds, ...hitSelection.variantIds],
+          widgetIdsByVariant: {
+            ...selectedWidgetIdsByVariant,
+            ...Object.fromEntries(
+              Object.entries(hitSelection.widgetIdsByVariant).map(([variantId, widgetIds]) => [
+                variantId,
+                [...(selectedWidgetIdsByVariant[variantId] ?? []), ...widgetIds],
+              ]),
+            ),
+          },
+        })
+      : normalizeStateBoardSelection(hitSelection);
+    onSelectionChange(nextSelection);
+    const nextFocusVariantId = Object.keys(hitSelection.widgetIdsByVariant)[0] ?? hitSelection.variantIds[0];
+    if (nextFocusVariantId) onSelectVariant(nextFocusVariantId);
     setMarquee(null);
   };
 
@@ -209,8 +241,7 @@ export function StateBoardSurface({
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
     if (widgetHit) {
       onSelectVariant(widgetHit.variantId);
-      const currentWidgetIds =
-        selection.kind === "widget" && selection.variantId === widgetHit.variantId ? selection.widgetIds : [];
+      const currentWidgetIds = getSelectedWidgetIdsForVariant(selection, widgetHit.variantId);
 
       if (!additive && currentWidgetIds.includes(widgetHit.widget.id)) {
         const dragIds = filterTopLevelWidgetIds(currentWidgetIds, project.widgetsById);
@@ -223,7 +254,17 @@ export function StateBoardSurface({
           ? currentWidgetIds.filter((widgetId) => widgetId !== widgetHit.widget.id)
           : [...currentWidgetIds, widgetHit.widget.id]
         : [widgetHit.widget.id];
-      onSelectionChange({ kind: "widget", variantId: widgetHit.variantId, widgetIds: nextWidgetIds });
+      onSelectionChange(
+        additive
+          ? normalizeStateBoardSelection({
+              variantIds: selectedVariantIds,
+              widgetIdsByVariant: {
+                ...selectedWidgetIdsByVariant,
+                [widgetHit.variantId]: nextWidgetIds,
+              },
+            })
+          : { kind: "widget", variantId: widgetHit.variantId, widgetIds: nextWidgetIds },
+      );
       if (!additive && nextWidgetIds.length > 0) {
         startWidgetDrag(widgetHit.variantId, filterTopLevelWidgetIds(nextWidgetIds, project.widgetsById), world);
       }
@@ -317,69 +358,152 @@ export function StateBoardSurface({
     onSelectionChange({ kind: "widget", variantId: dropTarget.variantId, widgetIds: [widgetId] });
   };
 
+  const handleContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    const world = screenToWorld(event.clientX, event.clientY);
+    const widgetHit = getStateBoardWidgetHit(
+      variants.map((variant) => variant.id),
+      rootTreesByVariant,
+      selectedWidgetIds,
+      world,
+    );
+    if (widgetHit) {
+      const currentWidgetIds = getSelectedWidgetIdsForVariant(selection, widgetHit.variantId);
+      const targetWidgetIds = currentWidgetIds.includes(widgetHit.widget.id) ? currentWidgetIds : [widgetHit.widget.id];
+      onSelectVariant(widgetHit.variantId);
+      if (!currentWidgetIds.includes(widgetHit.widget.id)) {
+        onSelectionChange({ kind: "widget", variantId: widgetHit.variantId, widgetIds: [widgetHit.widget.id] });
+      }
+      setContextMenuData({
+        kind: "widget",
+        targetVariantId: widgetHit.variantId,
+        targetWidgetIds,
+      });
+      return;
+    }
+
+    const hitVariantId = hitTest(world);
+    if (hitVariantId) {
+      onSelectVariant(hitVariantId);
+      onSelectionChange({ kind: "screen", variantIds: [hitVariantId] });
+      setContextMenuData({
+        kind: "screen",
+        targetVariantId: hitVariantId,
+      });
+      return;
+    }
+
+    const dropTarget = resolveStateBoardWidgetDropTarget({
+      project,
+      board,
+      world,
+      fallbackVariantId: activeVariantId,
+    });
+    setContextMenuData(dropTarget ? {
+      kind: "canvas",
+      targetVariantId: dropTarget.variantId,
+      dropParentId: dropTarget.parentId,
+      dropLocalX: dropTarget.localX,
+      dropLocalY: dropTarget.localY,
+    } : null);
+  };
+
   return (
-    <div
-      ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-neutral-900"
-      tabIndex={0}
-      onWheel={handleWheel}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onDragOver={(event) => {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-      }}
-      onDrop={handleDrop}
-      onKeyDown={(event) => {
-        if (event.code === "Space" && !isSpacePressed) {
-          event.preventDefault();
-          setIsSpacePressed(true);
-          if (containerRef.current) containerRef.current.style.cursor = "grab";
-        }
-      }}
-      onKeyUp={(event) => {
-        if (event.code === "Space") {
-          event.preventDefault();
-          setIsSpacePressed(false);
-          setIsPanning(false);
-          if (containerRef.current) containerRef.current.style.cursor = "default";
-        }
-      }}
-    >
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      <div className="absolute inset-0 origin-top-left" style={worldTransform(camera)}>
-        {variants.map((variant) => {
-          const frame = frameById[variant.id];
-          if (!frame) return null;
-          const isCanonical = board.canonicalVariantId === variant.id;
-          const isSelected = selectedVariantIds.includes(variant.id) || activeVariantId === variant.id;
-          return (
-            <section
-              key={variant.id}
-              className={`pointer-events-none absolute rounded border shadow-xl ${
-                isSelected ? "border-highlight-500 ring-2 ring-highlight-500/40" : "border-neutral-700"
-              }`}
-              style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
-            >
-              <div className="absolute -top-7 left-0 flex items-center gap-2 text-xs text-neutral-200">
-                <span className="font-semibold">{variant.name}</span>
-                {isCanonical ? (
-                  <span className="inline-flex items-center gap-1 rounded bg-highlight-500/20 px-2 py-0.5 text-[11px] text-highlight-200">
-                    <Star size={11} /> Canonical
-                  </span>
-                ) : null}
-              </div>
-              <div className="pointer-events-none flex h-full items-center justify-center text-xs text-neutral-500">
-                {frame.width} × {frame.height}
-              </div>
-            </section>
-          );
-        })}
-        {marquee ? <MarqueeRect marquee={marquee} /> : null}
-      </div>
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          ref={containerRef}
+          className="relative h-full w-full overflow-hidden bg-neutral-900"
+          tabIndex={0}
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onContextMenu={handleContextMenu}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }}
+          onDrop={handleDrop}
+          onKeyDown={(event) => {
+            if (event.code === "Space" && !isSpacePressed) {
+              event.preventDefault();
+              setIsSpacePressed(true);
+              if (containerRef.current) containerRef.current.style.cursor = "grab";
+            }
+          }}
+          onKeyUp={(event) => {
+            if (event.code === "Space") {
+              event.preventDefault();
+              setIsSpacePressed(false);
+              setIsPanning(false);
+              if (containerRef.current) containerRef.current.style.cursor = "default";
+            }
+          }}
+        >
+          <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+          <div className="absolute inset-0 origin-top-left" style={worldTransform(camera)}>
+            {variants.map((variant) => {
+              const frame = frameById[variant.id];
+              if (!frame) return null;
+              const isCanonical = board.canonicalVariantId === variant.id;
+              const isSelected = selectedVariantIds.includes(variant.id) || activeVariantId === variant.id;
+              return (
+                <section
+                  key={variant.id}
+                  className={`pointer-events-none absolute rounded border shadow-xl ${
+                    isSelected ? "border-highlight-500 ring-2 ring-highlight-500/40" : "border-neutral-700"
+                  }`}
+                  style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
+                >
+                  <div className="absolute -top-7 left-0 flex items-center gap-2 text-xs text-neutral-200">
+                    <span className="font-semibold">{variant.name}</span>
+                    {isCanonical ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-highlight-500/20 px-2 py-0.5 text-[11px] text-highlight-200">
+                        <Star size={11} /> Canonical
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="pointer-events-none flex h-full items-center justify-center text-xs text-neutral-500">
+                    {frame.width} × {frame.height}
+                  </div>
+                </section>
+              );
+            })}
+            {marquee ? <MarqueeRect marquee={marquee} /> : null}
+          </div>
+        </div>
+      </ContextMenuTrigger>
+      <StateBoardContextMenuContent
+        data={contextMenuData}
+        project={project}
+        onAddWidget={(parentId, widgetType, x, y) => {
+          const variantId = contextMenuData?.targetVariantId ?? activeVariantId;
+          const widgetId = getNextWidgetId(project, widgetType);
+          onVariantAction({
+            type: "insertVariantWidget",
+            variantId,
+            parentId,
+            widgetType,
+            position: { x, y },
+            widgetId,
+          });
+          onSelectVariant(variantId);
+          onSelectionChange({ kind: "widget", variantId, widgetIds: [widgetId] });
+        }}
+        onSetWidgetVisible={(widgetIds, visible) => {
+          for (const widgetId of widgetIds) {
+            onVariantAction({ type: "setVariantWidgetVisibility", widgetId, visible });
+          }
+        }}
+        onMoveWidget={(widgetId, parentId, index) => {
+          onVariantAction({ type: "moveVariantWidget", widgetId, targetParentId: parentId, targetIndex: index });
+        }}
+        onSetCanonical={(variantId) => {
+          onVariantAction({ type: "setCanonicalVariant", boardId: board.id, variantId });
+        }}
+      />
+    </ContextMenu>
   );
 }
 
@@ -388,19 +512,6 @@ function worldTransform(camera: Camera): React.CSSProperties {
     transformOrigin: "0 0",
     transform: `translate(calc(50% + ${camera.x * camera.zoom}px), calc(50% + ${camera.y * camera.zoom}px)) scale(${camera.zoom})`,
   };
-}
-
-function collectFrameHits(
-  frames: Record<string, { x: number; y: number; width: number; height: number }>,
-  marquee: MarqueeState,
-): string[] {
-  const minX = Math.min(marquee.startWorld.x, marquee.currentWorld.x);
-  const maxX = Math.max(marquee.startWorld.x, marquee.currentWorld.x);
-  const minY = Math.min(marquee.startWorld.y, marquee.currentWorld.y);
-  const maxY = Math.max(marquee.startWorld.y, marquee.currentWorld.y);
-  return Object.entries(frames)
-    .filter(([, frame]) => frame.x < maxX && frame.x + frame.width > minX && frame.y < maxY && frame.y + frame.height > minY)
-    .map(([id]) => id);
 }
 
 function MarqueeRect({ marquee }: { marquee: MarqueeState }) {

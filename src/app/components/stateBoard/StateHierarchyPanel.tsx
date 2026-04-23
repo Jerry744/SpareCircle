@@ -6,7 +6,8 @@ import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { StateBoard } from "../../backend/types/stateBoard";
 import type { Variant } from "../../backend/types/variant";
 import { CONTAINER_WIDGET_TYPES, type WidgetNode } from "../../backend/types/widget";
-import type { StateBoardSelection } from "./StateBoardShell";
+import type { StateBoardSelection } from "./stateBoardSelection";
+import { getSelectedVariantIds, getSelectedWidgetIdsForVariant } from "./stateBoardSelection";
 
 type DropPosition = "before" | "inside" | "after";
 type DragSource =
@@ -115,7 +116,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
   const selectScreenRow = (variantId: string, event: React.MouseEvent<HTMLDivElement>) => {
     onSelectVariant(variantId);
     const isCtrl = event.metaKey || event.ctrlKey;
-    const selectedVariantIds = selection.kind === "screen" ? selection.variantIds : [selection.variantId];
+    const selectedVariantIds = getSelectedVariantIds(selection);
     const nextVariantIds = isCtrl
       ? selectedVariantIds.includes(variantId)
         ? selectedVariantIds.filter((id) => id !== variantId)
@@ -133,7 +134,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
   ) => {
     onSelectVariant(variantId);
     const isCtrl = event.metaKey || event.ctrlKey;
-    const currentWidgetIds = selection.kind === "widget" && selection.variantId === variantId ? selection.widgetIds : [];
+    const currentWidgetIds = getSelectedWidgetIdsForVariant(selection, variantId);
     if (event.shiftKey) {
       const anchorId = rangeAnchorRef.current ?? widgetId;
       const anchorIndex = variantVisibleIds.indexOf(anchorId);
@@ -192,8 +193,8 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     const variantVisibleIds = collectVisibleIds(root, expandedIds).filter((id) => id !== root.id);
     const isActiveScreen = isRoot && variant.id === activeVariantId;
     const isSelected = isRoot
-      ? selection.kind === "screen" && selection.variantIds.includes(variant.id)
-      : selection.kind === "widget" && selection.variantId === variant.id && selection.widgetIds.includes(widget.id);
+      ? getSelectedVariantIds(selection).includes(variant.id)
+      : getSelectedWidgetIdsForVariant(selection, variant.id).includes(widget.id);
     const isDropTarget = dropTarget?.key === widget.id;
     const dropBefore = isDropTarget && dropTarget.position === "before";
     const dropInside = isDropTarget && dropTarget.position === "inside";
