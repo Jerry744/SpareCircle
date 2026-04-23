@@ -308,6 +308,46 @@ export function handleMoveVariantWidget(
   return touchVariant(touchVariant(next, owningVariantId, action.now), targetVariantId, action.now);
 }
 
+export function handleSetVariantWidgetPositions(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "setVariantWidgetPositions" }>,
+): ProjectSnapshotV2 {
+  const entries = Object.entries(action.positions);
+  if (entries.length === 0) return project;
+
+  let owningVariantId: string | null = null;
+  let changed = false;
+  const nextWidgetsById = { ...project.widgetsById };
+
+  for (const [widgetId, position] of entries) {
+    const widget = nextWidgetsById[widgetId];
+    if (!widget || !widget.parentId) return project;
+
+    const variantId = findVariantIdForWidget(project, widgetId);
+    if (!variantId) return project;
+
+    const variant = project.variantsById[variantId];
+    if (widgetId === variant?.rootWidgetId) return project;
+
+    if (owningVariantId && owningVariantId !== variantId) return project;
+    owningVariantId = variantId;
+
+    const nextX = Math.round(position.x);
+    const nextY = Math.round(position.y);
+    if (widget.x === nextX && widget.y === nextY) continue;
+
+    nextWidgetsById[widgetId] = {
+      ...widget,
+      x: nextX,
+      y: nextY,
+    };
+    changed = true;
+  }
+
+  if (!changed || !owningVariantId) return project;
+  return touchVariant({ ...project, widgetsById: nextWidgetsById }, owningVariantId, action.now);
+}
+
 export function handleSetVariantWidgetVisibility(
   project: ProjectSnapshotV2,
   action: Extract<VariantAction, { type: "setVariantWidgetVisibility" }>,
@@ -371,6 +411,7 @@ export function variantReducer(project: ProjectSnapshotV2, action: VariantAction
     case "moveVariantScreen": return handleMoveVariantScreen(project, action);
     case "insertVariantWidget": return handleInsertVariantWidget(project, action);
     case "moveVariantWidget": return handleMoveVariantWidget(project, action);
+    case "setVariantWidgetPositions": return handleSetVariantWidgetPositions(project, action);
     case "setVariantWidgetVisibility": return handleSetVariantWidgetVisibility(project, action);
     case "setBoardResolution": return handleSetBoardResolution(project, action);
     default: {

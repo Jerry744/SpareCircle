@@ -216,6 +216,43 @@ describe("variantReducer", () => {
     expect(parseProjectSnapshotV2(hidden).ok).toBe(true);
   });
 
+  it("updates widget positions for canvas dragging and supports multi-select payloads", () => {
+    const base = makeFixture();
+    const project = {
+      ...base,
+      widgetsById: {
+        ...base.widgetsById,
+        "screen-root": { ...base.widgetsById["screen-root"], childrenIds: ["button-a", "button-b"] },
+        "button-b": {
+          id: "button-b",
+          name: "Button B",
+          type: "Button",
+          parentId: "screen-root",
+          childrenIds: [],
+          x: 120,
+          y: 24,
+          width: 80,
+          height: 32,
+          text: "Next",
+          visible: true,
+        } satisfies WidgetNode,
+      },
+    };
+
+    const moved = variantReducer(project, {
+      type: "setVariantWidgetPositions",
+      positions: {
+        "button-a": { x: 18, y: 22 },
+        "button-b": { x: 132, y: 36 },
+      },
+      now: NOW,
+    });
+
+    expect(moved.widgetsById["button-a"]).toMatchObject({ x: 18, y: 22 });
+    expect(moved.widgetsById["button-b"]).toMatchObject({ x: 132, y: 36 });
+    expect(parseProjectSnapshotV2(moved).ok).toBe(true);
+  });
+
   it("inserts widgets into the targeted Variant subtree and rejects cross-variant parents", () => {
     const project = variantReducer(makeFixture(), {
       type: "createVariant",

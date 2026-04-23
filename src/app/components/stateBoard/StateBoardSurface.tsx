@@ -14,6 +14,7 @@ import { useCanvasGestures } from "../canvasViewport/useCanvasGestures";
 import { useCanvasResize } from "../canvasViewport/useCanvasResize";
 import type { StateBoardSelection } from "./StateBoardShell";
 import { resolveStateBoardWidgetDropTarget } from "./stateBoardDrop";
+import { filterTopLevelWidgetIds, getStateBoardWidgetHit } from "./stateBoardHitTest";
 
 interface StateBoardSurfaceProps {
   project: ProjectSnapshotV2;
@@ -25,10 +26,9 @@ interface StateBoardSurfaceProps {
   onVariantAction(action: VariantAction): void;
 }
 
-interface DragState {
-  startWorld: Point;
-  starts: Record<string, Point>;
-}
+type DragState =
+  | { kind: "screen"; startWorld: Point; starts: Record<string, Point> }
+  | { kind: "widget"; variantId: string; startWorld: Point; starts: Record<string, Point> };
 
 export function StateBoardSurface({
   project,
@@ -161,7 +161,17 @@ export function StateBoardSurface({
       const frame = frameById[id];
       if (frame) starts[id] = { x: frame.x, y: frame.y };
     }
-    setDrag({ startWorld: world, starts });
+    setDrag({ kind: "screen", startWorld: world, starts });
+  };
+
+  const startWidgetDrag = (variantId: string, widgetIds: string[], world: Point) => {
+    const starts: Record<string, Point> = {};
+    for (const id of widgetIds) {
+      const widget = project.widgetsById[id];
+      if (widget) starts[id] = { x: widget.x, y: widget.y };
+    }
+    if (Object.keys(starts).length === 0) return;
+    setDrag({ kind: "widget", variantId, startWorld: world, starts });
   };
 
   const panBy = (clientX: number, clientY: number) => {
@@ -189,13 +199,42 @@ export function StateBoardSurface({
     }
     if (event.button !== 0) return;
     const world = screenToWorld(event.clientX, event.clientY);
+    const widgetHit = getStateBoardWidgetHit(
+      variants.map((variant) => variant.id),
+      rootTreesByVariant,
+      selectedWidgetIds,
+      world,
+    );
     const hit = hitTest(world);
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+    if (widgetHit) {
+      onSelectVariant(widgetHit.variantId);
+      const currentWidgetIds =
+        selection.kind === "widget" && selection.variantId === widgetHit.variantId ? selection.widgetIds : [];
+
+      if (!additive && currentWidgetIds.includes(widgetHit.widget.id)) {
+        const dragIds = filterTopLevelWidgetIds(currentWidgetIds, project.widgetsById);
+        startWidgetDrag(widgetHit.variantId, dragIds.length > 0 ? dragIds : [widgetHit.widget.id], world);
+        return;
+      }
+
+      const nextWidgetIds = additive
+        ? currentWidgetIds.includes(widgetHit.widget.id)
+          ? currentWidgetIds.filter((widgetId) => widgetId !== widgetHit.widget.id)
+          : [...currentWidgetIds, widgetHit.widget.id]
+        : [widgetHit.widget.id];
+      onSelectionChange({ kind: "widget", variantId: widgetHit.variantId, widgetIds: nextWidgetIds });
+      if (!additive && nextWidgetIds.length > 0) {
+        startWidgetDrag(widgetHit.variantId, filterTopLevelWidgetIds(nextWidgetIds, project.widgetsById), world);
+      }
+      return;
+    }
     if (!hit) {
       setMarquee({ startWorld: world, currentWorld: world, additive });
       if (!additive) onSelectionChange({ kind: "screen", variantIds: [] });
       return;
     }
+
     const dragIds = selectedVariantIds.includes(hit) && !additive ? selectedVariantIds : [hit];
     updateSelection(hit, additive);
     startDrag(dragIds, world);
@@ -211,7 +250,7 @@ export function StateBoardSurface({
       setMarquee({ ...marquee, currentWorld: world });
       return;
     }
-    if (drag) {
+    if (drag?.kind === "screen") {
       const dx = world.x - drag.startWorld.x;
       const dy = world.y - drag.startWorld.y;
       for (const [variantId, start] of Object.entries(drag.starts)) {
@@ -221,6 +260,22 @@ export function StateBoardSurface({
           position: { x: Math.round(start.x + dx), y: Math.round(start.y + dy) },
         });
       }
+      return;
+    }
+    if (drag?.kind === "widget") {
+      const dx = world.x - drag.startWorld.x;
+      const dy = world.y - drag.startWorld.y;
+      const positions: Record<string, Point> = {};
+      for (const [widgetId, start] of Object.entries(drag.starts)) {
+        positions[widgetId] = {
+          x: Math.round(start.x + dx),
+          y: Math.round(start.y + dy),
+        };
+      }
+      onVariantAction({
+        type: "setVariantWidgetPositions",
+        positions,
+      });
     }
   };
 
@@ -295,7 +350,6 @@ export function StateBoardSurface({
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
       <div className="absolute inset-0 origin-top-left" style={worldTransform(camera)}>
-        <div className="absolute -left-[5000px] -top-[5000px] h-[10000px] w-[10000px] bg-[linear-gradient(var(--color-neutral-800)_1px,transparent_1px),linear-gradient(90deg,var(--color-neutral-800)_1px,transparent_1px)] bg-[size:48px_48px]" />
         {variants.map((variant) => {
           const frame = frameById[variant.id];
           if (!frame) return null;

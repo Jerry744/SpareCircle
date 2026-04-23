@@ -36,25 +36,30 @@ function drawRoundedRect(
 
 function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number, camera: Camera) {
   const gridSize = 50;
-  const scaledGridSize = gridSize * camera.zoom;
-  const offsetX = (camera.x * camera.zoom) % scaledGridSize;
-  const offsetY = (camera.y * camera.zoom) % scaledGridSize;
+  const minWorldX = -camera.x - width / (2 * camera.zoom);
+  const maxWorldX = -camera.x + width / (2 * camera.zoom);
+  const minWorldY = -camera.y - height / (2 * camera.zoom);
+  const maxWorldY = -camera.y + height / (2 * camera.zoom);
+  const startWorldX = Math.floor(minWorldX / gridSize) * gridSize;
+  const startWorldY = Math.floor(minWorldY / gridSize) * gridSize;
 
   ctx.strokeStyle = DESIGN_TOKENS.neutral[600];
   ctx.lineWidth = 1;
   ctx.globalAlpha = 0.3;
 
-  for (let x = offsetX; x < width; x += scaledGridSize) {
+  for (let worldX = startWorldX; worldX <= maxWorldX; worldX += gridSize) {
+    const screenX = (worldX + camera.x) * camera.zoom + width / 2;
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
+    ctx.moveTo(screenX, 0);
+    ctx.lineTo(screenX, height);
     ctx.stroke();
   }
 
-  for (let y = offsetY; y < height; y += scaledGridSize) {
+  for (let worldY = startWorldY; worldY <= maxWorldY; worldY += gridSize) {
+    const screenY = (worldY + camera.y) * camera.zoom + height / 2;
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
+    ctx.moveTo(0, screenY);
+    ctx.lineTo(width, screenY);
     ctx.stroke();
   }
 

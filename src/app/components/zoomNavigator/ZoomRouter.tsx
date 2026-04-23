@@ -39,7 +39,7 @@ export function ZoomRouter(props: ZoomRouterProps): JSX.Element {
   }
 
   const { stateNodeId, variantId } = current;
-  const key = `board:${stateNodeId}:${variantId}`;
+  const key = `board:${stateNodeId}`;
   return (
     <ZoomTransition levelKey={key}>
       <div className="relative h-full w-full">

@@ -34,5 +34,6 @@ export type VariantAction =
       now?: string;
     }
   | { type: "moveVariantWidget"; widgetId: string; targetParentId: string; targetIndex: number; now?: string }
+  | { type: "setVariantWidgetPositions"; positions: Record<string, { x: number; y: number }>; now?: string }
   | { type: "setVariantWidgetVisibility"; widgetId: string; visible: boolean; now?: string }
   | { type: "setBoardResolution"; boardId: string; width: number; height: number; now?: string };
