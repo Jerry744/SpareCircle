@@ -81,6 +81,8 @@ describe("variantReducer", () => {
     expect(blank.stateBoardsById[boardId].variantIds).toContain("variant-blank");
     expect(blank.variantsById["variant-blank"].status).toBe("draft");
     expect(blank.stateBoardsById[boardId].canonicalVariantId).toBe("variant-root");
+    expect(blank.sectionsById["section-alpha"].canonicalFrameId).toBe("screen-root");
+    expect(blank.sectionsById["section-alpha"].draftNodeIds).toEqual(["blank-root"]);
 
     const copied = variantReducer(blank, {
       type: "duplicateVariant",
@@ -90,7 +92,38 @@ describe("variantReducer", () => {
       now: NOW,
     });
     expect(copied.variantsById["variant-copy"].rootWidgetId).not.toBe("screen-root");
+    expect(copied.sectionsById["section-alpha"].draftNodeIds).toContain(copied.variantsById["variant-copy"].rootWidgetId);
     expect(parseProjectSnapshotV2(copied).ok).toBe(true);
+  });
+
+  it("binds one canonical frame per section and rejects cross-section frames", () => {
+    const project = variantReducer(makeFixture(), {
+      type: "createVariant",
+      boardId: "board-alpha",
+      mode: "blank",
+      name: "Draft",
+      variantId: "variant-draft",
+      rootWidgetId: "draft-root",
+      now: NOW,
+    });
+    const rebound = variantReducer(project, {
+      type: "bindCanonicalFrame",
+      sectionId: "section-alpha",
+      canonicalFrameId: "draft-root",
+      now: NOW,
+    });
+    expect(rebound.stateBoardsById["board-alpha"].canonicalVariantId).toBe("variant-draft");
+    expect(rebound.sectionsById["section-alpha"].canonicalFrameId).toBe("draft-root");
+    expect(rebound.sectionsById["section-alpha"].draftNodeIds).toEqual(["screen-root"]);
+
+    const rejected = variantReducer(rebound, {
+      type: "bindCanonicalFrame",
+      sectionId: "section-alpha",
+      canonicalFrameId: "foreign-root",
+      now: NOW,
+    });
+    expect(rejected).toBe(rebound);
+    expect(parseProjectSnapshotV2(rebound).ok).toBe(true);
   });
 
   it("blocks deleting the final Variant and reassigns canonical on deletion", () => {

@@ -22,6 +22,20 @@ import type { Snapshot } from "./snapshot";
 
 export const CURRENT_PROJECT_SCHEMA_VERSION_V2 = 2 as const;
 
+export interface Section {
+  id: string;
+  screenId: string;
+  stateId: string;
+  name: string;
+  canonicalFrameId: string;
+  draftNodeIds: string[];
+  order: number;
+}
+
+export interface ScreenTreeIndex {
+  rootWidgetIds: string[];
+}
+
 // `ProjectSnapshotCore` is the portion of a project that can be frozen into
 // a Snapshot. It deliberately excludes `snapshots`, `workspaceMode`, and
 // `zoomLevel` to prevent snapshots from nesting or capturing per-user prefs.
@@ -35,6 +49,11 @@ export interface ProjectSnapshotCore {
   // The v2 model reuses the existing WidgetNode shape to avoid a second
   // editing/render pipeline.
   widgetsById: Record<string, WidgetNode>;
+  sectionsById: Record<string, Section>;
+  sectionOrderByScreenId: Record<string, string[]>;
+  sectionIdByStateId: Record<string, string>;
+  screenTreeByScreenId: Record<string, ScreenTreeIndex>;
+  screenIdByRootWidgetId: Record<string, string>;
   transitionEventBindings: Record<string, TransitionEventBinding>;
   screenGroups: Record<string, ScreenGroup>;
   screenGroupOrder: string[];

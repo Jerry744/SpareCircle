@@ -11,6 +11,7 @@ import type { TransitionEventBinding } from "../types/eventBinding";
 import type {
   ProjectSnapshotCore,
   ProjectSnapshotV2,
+  Section,
 } from "../types/projectV2";
 import { CURRENT_PROJECT_SCHEMA_VERSION_V2 } from "../types/projectV2";
 import type { Snapshot } from "../types/snapshot";
@@ -33,6 +34,7 @@ import { parseTransitionEventBinding } from "./transitionEventBindingParser";
 import { runProjectV2CrossRefChecks } from "./projectV2CrossRef";
 import type { ParseResult } from "./parseResult";
 import { parseFail, parseOk } from "./parseResult";
+import { syncSectionIndexes } from "../stateBoard/sectionModel";
 
 function parseCanvasSnap(input: unknown): CanvasSnapSettings {
   if (!isRecord(input)) return { ...DEFAULT_CANVAS_SNAP };
@@ -123,6 +125,141 @@ function parseWidgets(input: unknown, path: string): ParseResult<Record<string, 
   return parseOk(widgets);
 }
 
+function parseStringArray(input: unknown, path: string): ParseResult<string[]> {
+  if (!Array.isArray(input)) return parseFail(`${path} must be an array`);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < input.length; index += 1) {
+    const value = input[index];
+    if (typeof value !== "string" || !value.trim()) return parseFail(`${path}[${index}] must be a non-empty string`);
+    if (seen.has(value)) return parseFail(`${path}[${index}] "${value}" is duplicated`);
+    seen.add(value);
+    out.push(value);
+  }
+  return parseOk(out);
+}
+
+function parseSection(input: unknown, path: string): ParseResult<Section> {
+  if (!isRecord(input)) return parseFail(`${path} must be an object`);
+  const { id, screenId, stateId, name, canonicalFrameId, order } = input;
+  if (typeof id !== "string" || !id.startsWith("section-")) return parseFail(`${path}.id must start with "section-"`);
+  if (typeof screenId !== "string" || !screenId.trim()) return parseFail(`${path}.screenId must be a non-empty string`);
+  if (typeof stateId !== "string" || !stateId.startsWith("state-node-")) return parseFail(`${path}.stateId must start with "state-node-"`);
+  if (typeof name !== "string" || !name.trim()) return parseFail(`${path}.name must be a non-empty string`);
+  if (typeof canonicalFrameId !== "string" || !canonicalFrameId.trim()) {
+    return parseFail(`${path}.canonicalFrameId must be a non-empty string`);
+  }
+  if (typeof order !== "number" || !Number.isInteger(order) || order < 0) {
+    return parseFail(`${path}.order must be a non-negative integer`);
+  }
+  const draftNodeIdsResult = parseStringArray(input.draftNodeIds, `${path}.draftNodeIds`);
+  if (!draftNodeIdsResult.ok) return draftNodeIdsResult;
+  return parseOk({
+    id,
+    screenId,
+    stateId,
+    name: name.trim(),
+    canonicalFrameId,
+    draftNodeIds: draftNodeIdsResult.value,
+    order,
+  });
+}
+
+function parseStringArrayRecord(input: unknown, path: string): ParseResult<Record<string, string[]>> {
+  if (!isRecord(input)) return parseFail(`${path} must be an object`);
+  const out: Record<string, string[]> = {};
+  for (const [key, raw] of Object.entries(input)) {
+    const parsed = parseStringArray(raw, `${path}["${key}"]`);
+    if (!parsed.ok) return parsed;
+    out[key] = parsed.value;
+  }
+  return parseOk(out);
+}
+
+function parseScreenTreeIndex(input: unknown, path: string): ParseResult<Record<string, { rootWidgetIds: string[] }>> {
+  if (!isRecord(input)) return parseFail(`${path} must be an object`);
+  const out: Record<string, { rootWidgetIds: string[] }> = {};
+  for (const [key, raw] of Object.entries(input)) {
+    if (!isRecord(raw)) return parseFail(`${path}["${key}"] must be an object`);
+    const rootWidgetIds = parseStringArray(raw.rootWidgetIds, `${path}["${key}"].rootWidgetIds`);
+    if (!rootWidgetIds.ok) return rootWidgetIds;
+    out[key] = { rootWidgetIds: rootWidgetIds.value };
+  }
+  return parseOk(out);
+}
+
+function assertRecordMatches(
+  actual: Record<string, unknown>,
+  expected: Record<string, unknown>,
+  path: string,
+): ParseResult<void> {
+  const actualKeys = Object.keys(actual).sort();
+  const expectedKeys = Object.keys(expected).sort();
+  if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) return parseFail(`${path} keys do not match the derived section model`);
+  for (const key of expectedKeys) {
+    if (JSON.stringify(actual[key]) !== JSON.stringify(expected[key])) {
+      return parseFail(`${path}["${key}"] does not match the derived section model`);
+    }
+  }
+  return parseOk(undefined);
+}
+
+function applyAndValidateSectionIndexes(
+  input: Record<string, unknown>,
+  core: ProjectSnapshotCore,
+  path: string,
+): ParseResult<ProjectSnapshotCore> {
+  const derived = syncSectionIndexes(core);
+
+  if (input.sectionsById !== undefined) {
+    const sectionsResult = parseRecord<Section>(
+      input.sectionsById,
+      `${path}.sectionsById`,
+      parseSection,
+      (section) => section.id,
+    );
+    if (!sectionsResult.ok) return sectionsResult;
+    const expectedById = derived.sectionsById;
+    const actualComparable = Object.fromEntries(
+      Object.entries(sectionsResult.value).map(([id, section]) => [
+        id,
+        { ...section, name: expectedById[id]?.name ?? section.name },
+      ]),
+    );
+    const expectedComparable = Object.fromEntries(
+      Object.entries(expectedById).map(([id, section]) => [id, { ...section, name: section.name }]),
+    );
+    const compare = assertRecordMatches(actualComparable, expectedComparable, `${path}.sectionsById`);
+    if (!compare.ok) return compare;
+    derived.sectionsById = sectionsResult.value;
+  }
+
+  if (input.sectionOrderByScreenId !== undefined) {
+    const parsed = parseStringArrayRecord(input.sectionOrderByScreenId, `${path}.sectionOrderByScreenId`);
+    if (!parsed.ok) return parsed;
+    const compare = assertRecordMatches(parsed.value, derived.sectionOrderByScreenId, `${path}.sectionOrderByScreenId`);
+    if (!compare.ok) return compare;
+  }
+  if (input.sectionIdByStateId !== undefined) {
+    if (!isRecord(input.sectionIdByStateId)) return parseFail(`${path}.sectionIdByStateId must be an object`);
+    const compare = assertRecordMatches(input.sectionIdByStateId, derived.sectionIdByStateId, `${path}.sectionIdByStateId`);
+    if (!compare.ok) return compare;
+  }
+  if (input.screenTreeByScreenId !== undefined) {
+    const parsed = parseScreenTreeIndex(input.screenTreeByScreenId, `${path}.screenTreeByScreenId`);
+    if (!parsed.ok) return parsed;
+    const compare = assertRecordMatches(parsed.value, derived.screenTreeByScreenId, `${path}.screenTreeByScreenId`);
+    if (!compare.ok) return compare;
+  }
+  if (input.screenIdByRootWidgetId !== undefined) {
+    if (!isRecord(input.screenIdByRootWidgetId)) return parseFail(`${path}.screenIdByRootWidgetId must be an object`);
+    const compare = assertRecordMatches(input.screenIdByRootWidgetId, derived.screenIdByRootWidgetId, `${path}.screenIdByRootWidgetId`);
+    if (!compare.ok) return compare;
+  }
+
+  return parseOk(derived);
+}
+
 function parseProjectSnapshotCore(
   input: unknown,
   path = "project",
@@ -199,33 +336,46 @@ function parseProjectSnapshotCore(
     }
   }
 
-  const crossRefResult = runProjectV2CrossRefChecks({
-    navigationMap: navigationMapResult.value,
-    stateBoardsById: stateBoardsResult.value,
-    variantsById: variantsResult.value,
-    widgetsById: widgetsResult.value,
-    transitionEventBindings: bindingsResult.value,
-    screenGroups: screenGroupsResult.value,
-  });
-  if (!crossRefResult.ok) return parseFail(crossRefResult.error);
-
-  const colorFormat = isColorFormat(input.colorFormat) ? input.colorFormat : undefined;
-
-  return parseOk({
+  const coreWithoutSections: ProjectSnapshotCore = {
     schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION_V2,
     projectName,
     navigationMap: navigationMapResult.value,
     stateBoardsById: stateBoardsResult.value,
     variantsById: variantsResult.value,
     widgetsById: widgetsResult.value,
+    sectionsById: {},
+    sectionOrderByScreenId: {},
+    sectionIdByStateId: {},
+    screenTreeByScreenId: {},
+    screenIdByRootWidgetId: {},
     transitionEventBindings: bindingsResult.value,
     screenGroups: screenGroupsResult.value,
     screenGroupOrder: screenGroupOrderResult.value,
     styleTokens: styleTokensResult.tokens,
     assets: assetsResult.assets,
-    colorFormat,
+    colorFormat: isColorFormat(input.colorFormat) ? input.colorFormat : undefined,
     canvasSnap: parseCanvasSnap(input.canvasSnap),
+  };
+
+  const sectionResult = applyAndValidateSectionIndexes(input, coreWithoutSections, path);
+  if (!sectionResult.ok) return sectionResult;
+
+  const crossRefResult = runProjectV2CrossRefChecks({
+    navigationMap: navigationMapResult.value,
+    stateBoardsById: stateBoardsResult.value,
+    variantsById: variantsResult.value,
+    widgetsById: widgetsResult.value,
+    sectionsById: sectionResult.value.sectionsById,
+    sectionOrderByScreenId: sectionResult.value.sectionOrderByScreenId,
+    sectionIdByStateId: sectionResult.value.sectionIdByStateId,
+    screenTreeByScreenId: sectionResult.value.screenTreeByScreenId,
+    screenIdByRootWidgetId: sectionResult.value.screenIdByRootWidgetId,
+    transitionEventBindings: bindingsResult.value,
+    screenGroups: screenGroupsResult.value,
   });
+  if (!crossRefResult.ok) return parseFail(crossRefResult.error);
+
+  return parseOk(sectionResult.value);
 }
 
 function parseSnapshots(input: unknown, path: string): ParseResult<Snapshot[]> {

@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Monitor, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, FolderOpen, Monitor, Star } from "lucide-react";
 import type { VariantAction } from "../../backend/reducer/variantActions";
 import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { StateBoard } from "../../backend/types/stateBoard";
@@ -107,6 +107,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
       return variant && root ? { variant, root } : null;
     })
     .filter((item): item is { variant: Variant; root: TreeNode } => Boolean(item)), [board.variantIds, project.variantsById, project.widgetsById]);
+  const section = project.sectionsById[project.sectionIdByStateId[board.stateNodeId]];
 
   const clearDrag = () => {
     setDragging(null);
@@ -257,7 +258,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
           )}
           <span className="text-xs flex-1 truncate">{isRoot ? variant.name : widget.name}</span>
           {isCanonical && isRoot ? <Star size={12} className="text-amber-300 fill-amber-300" /> : null}
-          <span className="text-[10px] text-neutral-400">{isRoot ? "Screen" : widget.type}</span>
+          <span className="text-[10px] text-neutral-400">{isRoot ? (isCanonical ? "Canonical Frame" : "Draft Frame") : widget.type}</span>
           {!isRoot && (
             <button
               className={`p-0.5 hover:bg-neutral-500 rounded ${widget.visible === false ? "text-neutral-500" : "text-neutral-300 opacity-0 group-hover:opacity-100"}`}
@@ -286,7 +287,18 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
         <span className="text-xs font-semibold text-neutral-300">HIERARCHY</span>
       </div>
       <div className="flex-1 overflow-y-auto p-2 group">
-        {screens.map(({ variant, root }) => renderWidget(root, variant, root, 0))}
+        {section ? (
+          <div className="mb-1">
+            <div className="flex items-center gap-1 rounded px-2 py-1 text-xs text-neutral-200">
+              <div className="w-5 flex items-center justify-center"><FolderOpen size={13} /></div>
+              <span className="min-w-0 flex-1 truncate font-medium">{section.name}</span>
+              <span className="text-[10px] text-neutral-400">Section</span>
+            </div>
+            {screens.map(({ variant, root }) => renderWidget(root, variant, root, 1))}
+          </div>
+        ) : (
+          screens.map(({ variant, root }) => renderWidget(root, variant, root, 0))
+        )}
       </div>
     </div>
   );

@@ -6,6 +6,7 @@
 
 import type { ProjectSnapshotV2 } from "../types/projectV2";
 import { autoTidy } from "../navigation/layout";
+import { syncSectionIndexes } from "../stateBoard/sectionModel";
 import type { NavMapAction } from "./navMapActions";
 import {
   handleAssignStateNodeGroup,
@@ -25,6 +26,10 @@ import {
   handleUpdateTransitionLabel,
   handleUpdateTransitionWaypoints,
 } from "./transitionReducer";
+
+function syncIfChanged(project: ProjectSnapshotV2, next: ProjectSnapshotV2): ProjectSnapshotV2 {
+  return next === project ? project : syncSectionIndexes(next);
+}
 
 export function handleSetNavViewport(
   project: ProjectSnapshotV2,
@@ -54,7 +59,7 @@ export function navigationMapReducer(
 ): ProjectSnapshotV2 {
   switch (action.type) {
     case "createStateNode":
-      return handleCreateStateNode(project, action);
+      return syncIfChanged(project, handleCreateStateNode(project, action));
     case "renameStateNode":
       return handleRenameStateNode(project, action);
     case "moveStateNode":
@@ -64,11 +69,11 @@ export function navigationMapReducer(
     case "setInitialState":
       return handleSetInitialState(project, action);
     case "assignStateNodeGroup":
-      return handleAssignStateNodeGroup(project, action);
+      return syncIfChanged(project, handleAssignStateNodeGroup(project, action));
     case "toggleNavigationState":
       return handleToggleNavigationState(project, action);
     case "deleteStateNodes":
-      return handleDeleteStateNodes(project, action);
+      return syncIfChanged(project, handleDeleteStateNodes(project, action));
     case "setStateNodeAppearance":
       return handleSetStateNodeAppearance(project, action);
     case "createTransition":

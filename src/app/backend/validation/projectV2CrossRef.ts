@@ -8,6 +8,7 @@ import type { WidgetNode } from "../types/widget";
 import type { NavigationMap } from "../types/navigationMap";
 import type { StateBoard } from "../types/stateBoard";
 import type { Variant } from "../types/variant";
+import type { Section, ScreenTreeIndex } from "../types/projectV2";
 import type { ScreenGroup } from "../types/screenGroup";
 import type { TransitionEventBinding } from "../types/eventBinding";
 
@@ -16,6 +17,11 @@ export interface ProjectV2CrossRefInput {
   stateBoardsById: Record<string, StateBoard>;
   variantsById: Record<string, Variant>;
   widgetsById: Record<string, WidgetNode>;
+  sectionsById: Record<string, Section>;
+  sectionOrderByScreenId: Record<string, string[]>;
+  sectionIdByStateId: Record<string, string>;
+  screenTreeByScreenId: Record<string, ScreenTreeIndex>;
+  screenIdByRootWidgetId: Record<string, string>;
   transitionEventBindings: Record<string, TransitionEventBinding>;
   screenGroups: Record<string, ScreenGroup>;
 }
@@ -132,6 +138,59 @@ function checkWidgetTree(input: ProjectV2CrossRefInput): CrossRefResult {
   return { ok: true };
 }
 
+function checkSections(input: ProjectV2CrossRefInput): CrossRefResult {
+  const {
+    navigationMap,
+    stateBoardsById,
+    variantsById,
+    sectionsById,
+    sectionIdByStateId,
+    sectionOrderByScreenId,
+    screenTreeByScreenId,
+    screenIdByRootWidgetId,
+  } = input;
+  const seenSections = new Set<string>();
+  const sectionOrderMembership = new Set(Object.values(sectionOrderByScreenId).flat());
+
+  for (const stateNode of Object.values(navigationMap.stateNodes)) {
+    const sectionId = sectionIdByStateId[stateNode.id];
+    const section = sectionId ? sectionsById[sectionId] : undefined;
+    if (!section) return fail(`StateNode "${stateNode.id}" must map to exactly one Section`);
+    if (seenSections.has(section.id)) return fail(`Section "${section.id}" is mapped from more than one StateNode`);
+    seenSections.add(section.id);
+    if (section.stateId !== stateNode.id) return fail(`Section "${section.id}".stateId must equal "${stateNode.id}"`);
+    if (!sectionOrderMembership.has(section.id)) return fail(`Section "${section.id}" must be present in sectionOrderByScreenId`);
+
+    const board = stateBoardsById[stateNode.boardId];
+    if (!board) continue;
+    const canonicalVariant = variantsById[board.canonicalVariantId];
+    if (!canonicalVariant) continue;
+    if (section.canonicalFrameId !== canonicalVariant.rootWidgetId) {
+      return fail(`Section "${section.id}".canonicalFrameId must equal the owning board canonical frame`);
+    }
+    const variantRootIds = board.variantIds.map((variantId) => variantsById[variantId]?.rootWidgetId).filter(Boolean);
+    const expectedDrafts = variantRootIds.filter((rootWidgetId) => rootWidgetId !== section.canonicalFrameId).sort();
+    if (JSON.stringify([...section.draftNodeIds].sort()) !== JSON.stringify(expectedDrafts)) {
+      return fail(`Section "${section.id}".draftNodeIds must match non-canonical frame roots`);
+    }
+    for (const rootWidgetId of variantRootIds) {
+      if (screenIdByRootWidgetId[rootWidgetId] !== section.screenId) {
+        return fail(`Frame root "${rootWidgetId}" must belong to Section "${section.id}" screen tree`);
+      }
+      if (!screenTreeByScreenId[section.screenId]?.rootWidgetIds.includes(rootWidgetId)) {
+        return fail(`screenTreeByScreenId["${section.screenId}"] must include frame root "${rootWidgetId}"`);
+      }
+    }
+  }
+
+  for (const section of Object.values(sectionsById)) {
+    if (!navigationMap.stateNodes[section.stateId]) {
+      return fail(`Section "${section.id}" points to unknown StateNode "${section.stateId}"`);
+    }
+  }
+  return { ok: true };
+}
+
 // INV-6, INV-7, INV-8: binding integrity.
 function checkTransitionEventBindings(input: ProjectV2CrossRefInput): CrossRefResult {
   const { navigationMap, transitionEventBindings, widgetsById } = input;
@@ -212,6 +271,7 @@ export function runProjectV2CrossRefChecks(input: ProjectV2CrossRefInput): Cross
     checkVariantBoardLink,
     checkVariantRootWidget,
     checkWidgetTree,
+    checkSections,
     checkTransitionEventBindings,
     checkScreenGroupMembership,
   ];

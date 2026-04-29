@@ -24,8 +24,12 @@ function StateScreensPanel({
   onOpenStateVariant,
   onVariantAction: _onVariantAction,
 }: Required<Pick<ScreensPanelProps, "stateProject" | "onVariantAction" | "onOpenStateVariant">> & ScreensPanelProps) {
+  const activeScreenId = activeStateNodeId
+    ? stateProject.navigationMap.stateNodes[activeStateNodeId]?.screenGroupId
+    : undefined;
   const states = stateProject.navigationMap.stateNodeOrder
     .map((id) => stateProject.navigationMap.stateNodes[id])
+    .filter((stateNode) => !activeScreenId || stateNode?.screenGroupId === activeScreenId)
     .filter(Boolean);
 
   return (
@@ -36,8 +40,14 @@ function StateScreensPanel({
       <div className="overflow-y-auto p-2">
         {states.map((stateNode) => {
           const board = stateProject.stateBoardsById[stateNode.boardId];
+          const section = stateProject.sectionsById[stateProject.sectionIdByStateId[stateNode.id]];
           const isActive = activeStateNodeId === stateNode.id;
-          const resolution = board ? `${board.meta.width} × ${board.meta.height}` : "-- × --";
+          const canonical = board ? stateProject.variantsById[board.canonicalVariantId] : undefined;
+          const bindingStatus = section && canonical?.rootWidgetId === section.canonicalFrameId
+            ? "valid"
+            : section
+              ? "conflict"
+              : "missing";
           return (
             <button
               key={stateNode.id}
@@ -51,7 +61,7 @@ function StateScreensPanel({
               }}
             >
               <span className="min-w-0 flex-1 truncate font-medium">{stateNode.name}</span>
-              <span className={isActive ? "text-neutral-100" : "text-neutral-400"}>{resolution}</span>
+              <span className={isActive ? "text-neutral-100" : "text-neutral-400"}>{bindingStatus}</span>
             </button>
           );
         })}

@@ -20,6 +20,12 @@ export type VariantAction =
   | { type: "renameVariant"; variantId: string; name: string; now?: string }
   | { type: "duplicateVariant"; variantId: string; name?: string; variantIdOverride?: string; now?: string }
   | { type: "setCanonicalVariant"; boardId: string; variantId: string; now?: string }
+  | { type: "createSection"; stateId: string; name?: string }
+  | { type: "removeSection"; sectionId: string }
+  | { type: "renameSection"; sectionId: string; name: string }
+  | { type: "bindCanonicalFrame"; sectionId: string; canonicalFrameId: string; now?: string }
+  | { type: "unbindCanonicalFrame"; sectionId: string }
+  | { type: "mapStateSection"; stateId: string; sectionId: string }
   | { type: "setVariantStatus"; variantId: string; status: VariantStatus; now?: string }
   | { type: "reorderVariants"; boardId: string; orderedIds: string[] }
   | { type: "deleteVariant"; variantId: string }

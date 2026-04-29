@@ -14,6 +14,7 @@ import { DEFAULT_WORKSPACE_MODE } from "../types/mode";
 import { DEFAULT_ZOOM_LEVEL } from "../types/zoomLevel";
 import { DEFAULT_CANVAS_SNAP, DEFAULT_PROJECT_NAME } from "../types/project";
 import { makeBoardId, makeId, ID_PREFIX } from "../types/idPrefixes";
+import { syncSectionIndexes } from "../stateBoard/sectionModel";
 import { createDefaultUserStyleTokens } from "../../constants/styleTokenPresets";
 
 interface CreateEmptyProjectOptions {
@@ -85,7 +86,7 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
     updatedAt: createdAt,
   };
 
-  return {
+  return syncSectionIndexes({
     schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION_V2,
     projectName: options.projectName?.trim() || DEFAULT_PROJECT_NAME,
     navigationMap,
@@ -101,5 +102,10 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
     snapshots: [],
     workspaceMode: DEFAULT_WORKSPACE_MODE,
     zoomLevel: { ...DEFAULT_ZOOM_LEVEL },
-  };
+    sectionsById: {},
+    sectionOrderByScreenId: {},
+    sectionIdByStateId: {},
+    screenTreeByScreenId: {},
+    screenIdByRootWidgetId: {},
+  });
 }

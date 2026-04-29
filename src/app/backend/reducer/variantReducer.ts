@@ -7,9 +7,14 @@ import { DEFAULT_STATE_BOARD_META } from "../types/stateBoard";
 import { ID_PREFIX, makeId } from "../types/idPrefixes";
 import { cloneVariant } from "../stateBoard/variantCloning";
 import { reassignCanonicalAfterMutation } from "../stateBoard/variantHelpers";
+import { makeSectionId, syncSectionIndexes } from "../stateBoard/sectionModel";
 import { touchVariant } from "./helpers";
 import type { VariantAction } from "./variantActions";
 import { createWidgetNode } from "../widgets";
+
+function syncIfChanged(project: ProjectSnapshotV2, next: ProjectSnapshotV2): ProjectSnapshotV2 {
+  return next === project ? project : syncSectionIndexes(next);
+}
 
 function uniqueVariantName(project: ProjectSnapshotV2, board: StateBoard, requested: string | undefined): string {
   const base = requested?.trim() || "Variant";
@@ -396,24 +401,79 @@ export function handleSetBoardResolution(
   };
 }
 
+function handleCreateSection(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "createSection" }>,
+): ProjectSnapshotV2 {
+  if (!project.navigationMap.stateNodes[action.stateId]) return project;
+  const synced = syncSectionIndexes(project);
+  const sectionId = synced.sectionIdByStateId[action.stateId];
+  if (!action.name?.trim() || !sectionId) return synced;
+  const section = synced.sectionsById[sectionId];
+  return {
+    ...synced,
+    sectionsById: { ...synced.sectionsById, [sectionId]: { ...section, name: action.name.trim() } },
+  };
+}
+
+function handleRenameSection(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "renameSection" }>,
+): ProjectSnapshotV2 {
+  const section = project.sectionsById[action.sectionId];
+  const name = action.name.trim();
+  if (!section || !name || section.name === name) return project;
+  return {
+    ...project,
+    sectionsById: { ...project.sectionsById, [section.id]: { ...section, name } },
+  };
+}
+
+function handleBindCanonicalFrame(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "bindCanonicalFrame" }>,
+): ProjectSnapshotV2 {
+  const section = project.sectionsById[action.sectionId];
+  if (!section) return project;
+  const stateNode = project.navigationMap.stateNodes[section.stateId];
+  const board = stateNode ? project.stateBoardsById[stateNode.boardId] : undefined;
+  if (!board) return project;
+  const variant = board.variantIds
+    .map((variantId) => project.variantsById[variantId])
+    .find((item) => item?.rootWidgetId === action.canonicalFrameId);
+  if (!variant) return project;
+  return syncSectionIndexes(handleSetCanonicalVariant(project, {
+    type: "setCanonicalVariant",
+    boardId: board.id,
+    variantId: variant.id,
+    now: action.now,
+  }));
+}
+
 export function variantReducer(project: ProjectSnapshotV2, action: VariantAction): ProjectSnapshotV2 {
   switch (action.type) {
-    case "createVariant": return handleCreateVariant(project, action);
+    case "createVariant": return syncIfChanged(project, handleCreateVariant(project, action));
     case "renameVariant": return handleRenameVariant(project, action);
-    case "duplicateVariant": return handleCreateVariant(project, {
+    case "duplicateVariant": return syncIfChanged(project, handleCreateVariant(project, {
       type: "createVariant", boardId: project.variantsById[action.variantId]?.boardId ?? "",
       mode: "copy_of", sourceVariantId: action.variantId, name: action.name, variantId: action.variantIdOverride, now: action.now,
-    });
-    case "setCanonicalVariant": return handleSetCanonicalVariant(project, action);
-    case "setVariantStatus": return handleSetVariantStatus(project, action);
+    }));
+    case "setCanonicalVariant": return syncIfChanged(project, handleSetCanonicalVariant(project, action));
+    case "createSection": return handleCreateSection(project, action);
+    case "removeSection": return project.sectionsById[action.sectionId] ? syncSectionIndexes(project) : project;
+    case "renameSection": return handleRenameSection(project, action);
+    case "bindCanonicalFrame": return handleBindCanonicalFrame(project, action);
+    case "unbindCanonicalFrame": return project.sectionsById[action.sectionId] ? project : project;
+    case "mapStateSection": return action.sectionId === makeSectionId(action.stateId) ? syncSectionIndexes(project) : project;
+    case "setVariantStatus": return syncIfChanged(project, handleSetVariantStatus(project, action));
     case "reorderVariants": return handleReorderVariants(project, action);
-    case "deleteVariant": return handleDeleteVariant(project, action);
+    case "deleteVariant": return syncIfChanged(project, handleDeleteVariant(project, action));
     case "moveVariantScreen": return handleMoveVariantScreen(project, action);
     case "insertVariantWidget": return handleInsertVariantWidget(project, action);
     case "moveVariantWidget": return handleMoveVariantWidget(project, action);
     case "setVariantWidgetPositions": return handleSetVariantWidgetPositions(project, action);
     case "setVariantWidgetVisibility": return handleSetVariantWidgetVisibility(project, action);
-    case "setBoardResolution": return handleSetBoardResolution(project, action);
+    case "setBoardResolution": return syncIfChanged(project, handleSetBoardResolution(project, action));
     default: {
       const _exhaustive: never = action;
       void _exhaustive;

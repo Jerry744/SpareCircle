@@ -46,12 +46,30 @@ describe("createEmptyProjectV2", () => {
     expect(project.variantsById["variant-root"].status).toBe("canonical");
     expect(project.widgetsById["screen-1-root"].type).toBe("Screen");
     expect(project.widgetsById["screen-1-root"].parentId).toBeNull();
+    expect(project.sectionIdByStateId["state-node-alpha"]).toBe("section-alpha");
+    expect(project.sectionsById["section-alpha"].canonicalFrameId).toBe("screen-1-root");
+    expect(project.screenTreeByScreenId["state-node-alpha"].rootWidgetIds).toEqual(["screen-1-root"]);
   });
 
   it("passes round-trip through parseProjectSnapshotV2", () => {
     const project = makeFixture();
     const result = parseProjectSnapshotV2(project);
     expect(result.ok).toBe(true);
+  });
+
+  it("migrates legacy v2 snapshots that do not contain sections", () => {
+    const project = makeFixture();
+    const legacy = { ...project } as Record<string, unknown>;
+    delete legacy.sectionsById;
+    delete legacy.sectionOrderByScreenId;
+    delete legacy.sectionIdByStateId;
+    delete legacy.screenTreeByScreenId;
+    delete legacy.screenIdByRootWidgetId;
+    const result = parseProjectSnapshotV2(legacy);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.sectionsById["section-alpha"].canonicalFrameId).toBe("screen-1-root");
+    }
   });
 });
 
@@ -185,6 +203,17 @@ describe("runProjectV2CrossRefChecks", () => {
     const result = runProjectV2CrossRefChecks(project);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/Screen/);
+  });
+
+  it("flags duplicate or stale canonical section bindings", () => {
+    const project = makeFixture();
+    project.sectionsById["section-alpha"] = {
+      ...project.sectionsById["section-alpha"],
+      canonicalFrameId: "screen-ghost",
+    };
+    const result = runProjectV2CrossRefChecks(project);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/canonicalFrameId/);
   });
 
   it("flags INV-8 when two bindings target the same Transition", () => {
