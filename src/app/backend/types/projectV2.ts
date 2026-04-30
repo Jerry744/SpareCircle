@@ -22,6 +22,40 @@ import type { Snapshot } from "./snapshot";
 
 export const CURRENT_PROJECT_SCHEMA_VERSION_V2 = 2 as const;
 
+// ── Tree node types (non-widget structural nodes) ──
+
+export interface BaseNode {
+  id: string;
+  parentId: string | null;
+  childrenIds: string[];
+}
+
+export interface ScreenRootNode extends BaseNode {
+  kind: "screen_root";
+}
+
+export interface StateSectionNode extends BaseNode {
+  kind: "state_section";
+  screenId: string;
+  stateId: string;
+  name: string;
+  sectionId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  layoutMode: "auto" | "manual";
+}
+
+export interface FreeLayerNode extends BaseNode {
+  kind: "free_layer";
+}
+
+export type TreeNode = ScreenRootNode | StateSectionNode | FreeLayerNode;
+
+// ── Section (deprecated, use StateSection) ──
+
+/** @deprecated Use StateSection instead. */
 export interface Section {
   id: string;
   screenId: string;
@@ -31,6 +65,9 @@ export interface Section {
   draftNodeIds: string[];
   order: number;
 }
+
+/** T5.2: Section renamed to StateSection. */
+export type StateSection = Section;
 
 export interface ScreenTreeIndex {
   rootWidgetIds: string[];
@@ -49,6 +86,9 @@ export interface ProjectSnapshotCore {
   // The v2 model reuses the existing WidgetNode shape to avoid a second
   // editing/render pipeline.
   widgetsById: Record<string, WidgetNode>;
+  // T5.2: structural tree nodes (ScreenRoot, StateSection, FreeLayer).
+  // These encode the per-screen tree hierarchy; indexes below are derived.
+  treeNodesById: Record<string, TreeNode>;
   sectionsById: Record<string, Section>;
   sectionOrderByScreenId: Record<string, string[]>;
   sectionIdByStateId: Record<string, string>;

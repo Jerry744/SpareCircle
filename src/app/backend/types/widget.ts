@@ -37,6 +37,7 @@ export interface WidgetNode {
   y: number;
   width: number;
   height: number;
+  frameRole?: "canonical" | "draft";
   text?: string;
   fill?: string;
   fillTokenId?: string;

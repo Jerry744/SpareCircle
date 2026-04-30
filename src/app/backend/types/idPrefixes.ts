@@ -9,6 +9,8 @@ export const ID_PREFIX = {
   variant: "variant",
   section: "section",
   screenGroup: "screen-group",
+  screenRoot: "screen-root",
+  freeLayer: "free-layer",
   // A StateBoard is 1:1 with a StateNode, so its id is derived from the
   // owning StateNode id. `makeBoardId()` below enforces the convention.
   stateBoard: "board",

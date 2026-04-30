@@ -486,6 +486,7 @@ export function handleDuplicateSectionFrame(
   }
   const newFrameId = idMap.get(sourceRoot.id);
   if (!newFrameId) return project;
+  const existingTreeNode = project.treeNodesById?.[section.id];
   const next: ProjectSnapshotV2 = {
     ...project,
     sectionsById: {
@@ -493,6 +494,17 @@ export function handleDuplicateSectionFrame(
       [section.id]: { ...section, draftNodeIds: [...section.draftNodeIds, newFrameId] },
     },
     widgetsById: { ...project.widgetsById, ...newWidgets },
+    ...(existingTreeNode
+      ? {
+          treeNodesById: {
+            ...project.treeNodesById,
+            [section.id]: {
+              ...existingTreeNode,
+              childrenIds: [...existingTreeNode.childrenIds, newFrameId],
+            },
+          },
+        }
+      : {}),
   };
   return touchVariant(next, variant.id, action.now);
 }
@@ -515,6 +527,7 @@ export function handleDeleteVariantWidgets(
 
   const { widgetsById, deletedIds } = removeWidgetSubtrees(project.widgetsById, roots);
   const sectionsById = { ...project.sectionsById };
+  const treeNodesById = project.treeNodesById ? { ...project.treeNodesById } : {};
   for (const section of Object.values(project.sectionsById)) {
     const draftNodeIds = section.draftNodeIds.filter((nodeId) => !deletedIds.has(nodeId));
     if (draftNodeIds.length !== section.draftNodeIds.length) {
@@ -522,8 +535,23 @@ export function handleDeleteVariantWidgets(
       touchedVariantIds.add(section.stateId);
     }
   }
+  let treeChanged = false;
+  for (const [nodeId, node] of Object.entries(treeNodesById)) {
+    if (node.kind === "state_section") {
+      const nextChildrenIds = node.childrenIds.filter((cid) => !deletedIds.has(cid));
+      if (nextChildrenIds.length !== node.childrenIds.length) {
+        treeNodesById[nodeId] = { ...node, childrenIds: nextChildrenIds };
+        treeChanged = true;
+      }
+    }
+  }
 
-  let next: ProjectSnapshotV2 = { ...project, sectionsById, widgetsById };
+  let next: ProjectSnapshotV2 = {
+    ...project,
+    sectionsById,
+    widgetsById,
+    ...(treeChanged ? { treeNodesById } : {}),
+  };
   for (const variantId of touchedVariantIds) next = touchVariant(next, variantId, action.now);
   return next;
 }

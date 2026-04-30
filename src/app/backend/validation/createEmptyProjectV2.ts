@@ -14,7 +14,7 @@ import { DEFAULT_WORKSPACE_MODE } from "../types/mode";
 import { DEFAULT_ZOOM_LEVEL } from "../types/zoomLevel";
 import { DEFAULT_CANVAS_SNAP, DEFAULT_PROJECT_NAME } from "../types/project";
 import { makeBoardId, makeId, ID_PREFIX } from "../types/idPrefixes";
-import { syncSectionIndexes } from "../stateBoard/sectionModel";
+import { syncSectionIndexes, makeScreenRootId, makeSectionId } from "../stateBoard/sectionModel";
 import { createDefaultUserStyleTokens } from "../../constants/styleTokenPresets";
 
 interface CreateEmptyProjectOptions {
@@ -35,6 +35,9 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
   const boardId = makeBoardId(stateNodeId);
   const variantId = options.variantId ?? makeId(ID_PREFIX.variant);
   const rootWidgetId = options.rootWidgetId ?? "screen-1-root";
+  const screenId = stateNodeId;
+  const screenRootId = makeScreenRootId(screenId);
+  const sectionId = makeSectionId(variantId);
 
   const rootWidget: WidgetNode = {
     id: rootWidgetId,
@@ -49,6 +52,7 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
     fill: DEFAULT_STATE_BOARD_META.fill,
     radius: 0,
     visible: true,
+    frameRole: "canonical",
   };
 
   const stateNode: StateNode = {
@@ -93,6 +97,7 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
     stateBoardsById: { [boardId]: stateBoard },
     variantsById: { [variantId]: variant },
     widgetsById: { [rootWidgetId]: rootWidget },
+    treeNodesById: {},
     transitionEventBindings: {},
     screenGroups: {},
     screenGroupOrder: [],

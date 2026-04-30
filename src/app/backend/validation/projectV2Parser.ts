@@ -347,6 +347,7 @@ function parseProjectSnapshotCore(
     stateBoardsById: stateBoardsResult.value,
     variantsById: variantsResult.value,
     widgetsById: widgetsResult.value,
+    treeNodesById: {},
     sectionsById: {},
     sectionOrderByScreenId: {},
     sectionIdByStateId: {},
