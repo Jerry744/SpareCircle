@@ -17,6 +17,7 @@ import { resolveStateBoardWidgetDropTarget } from "./stateBoardDrop";
 import { filterTopLevelWidgetIds, getStateBoardWidgetHit } from "./stateBoardHitTest";
 import { computeStateBoardMarqueeSelection } from "./stateBoardMarquee";
 import { StateBoardContextMenuContent, type StateBoardContextMenuData } from "./stateBoardContextMenu";
+import { makeSectionId } from "../../backend/stateBoard/sectionModel";
 import {
   getSelectedVariantIds,
   getSelectedWidgetIds,
@@ -111,14 +112,18 @@ export function StateBoardSurface({
   const draftFrameBounds = useMemo(() => {
     const out: { widgetId: string; variant: Variant; x: number; y: number; width: number; height: number }[] = [];
     for (const variant of variants) {
-      const section = project.sectionsById[project.sectionIdByStateId[variant.id]];
-      for (const draftNodeId of section?.draftNodeIds ?? []) {
+      const sectionId = makeSectionId(variant.id);
+      const sectionNode = project.treeNodesById?.[sectionId];
+      const draftIds: string[] = sectionNode?.kind === "state_section"
+        ? sectionNode.childrenIds.filter((cid) => cid !== variant.rootWidgetId)
+        : [];
+      for (const draftNodeId of draftIds) {
         const draftRoot = project.widgetsById[draftNodeId];
         if (draftRoot) out.push({ widgetId: draftNodeId, variant, x: draftRoot.x, y: draftRoot.y, width: draftRoot.width, height: draftRoot.height });
       }
     }
     return out;
-  }, [project.widgetsById, project.sectionsById, project.sectionIdByStateId, variants]);
+  }, [project.widgetsById, project.treeNodesById, variants]);
   const rootTreesByVariant = useMemo(() => {
     const out: Record<string, ReturnType<typeof buildWidgetTree>> = {};
     for (const variant of variants) out[variant.id] = buildWidgetTree(project, variant.rootWidgetId);
@@ -127,10 +132,14 @@ export function StateBoardSurface({
   const hitTreesByVariant = useMemo(() => {
     const out: Record<string, ReturnType<typeof buildWidgetTree>[]> = {};
     for (const variant of variants) {
-      const section = project.sectionsById[project.sectionIdByStateId[variant.id]];
+      const sectionId = makeSectionId(variant.id);
+      const sectionNode = project.treeNodesById?.[sectionId];
+      const draftIds: string[] = sectionNode?.kind === "state_section"
+        ? sectionNode.childrenIds.filter((cid) => cid !== variant.rootWidgetId)
+        : [];
       out[variant.id] = [
         buildWidgetTree(project, variant.rootWidgetId),
-        ...(section?.draftNodeIds ?? []).map((draftNodeId) => buildWidgetTree(project, draftNodeId)),
+        ...draftIds.map((draftNodeId) => buildWidgetTree(project, draftNodeId)),
       ];
     }
     return out;
@@ -141,8 +150,12 @@ export function StateBoardSurface({
       const root = project.widgetsById[variant.rootWidgetId];
       const rootTree = rootTreesByVariant[variant.id];
       let bounds = root && rootTree ? getWidgetTreeBounds(rootTree, root.x, root.y) : null;
-      const section = project.sectionsById[project.sectionIdByStateId[variant.id]];
-      for (const draftNodeId of section?.draftNodeIds ?? []) {
+      const sectionId = makeSectionId(variant.id);
+      const sectionNode = project.treeNodesById?.[sectionId];
+      const draftIds: string[] = sectionNode?.kind === "state_section"
+        ? sectionNode.childrenIds.filter((cid) => cid !== variant.rootWidgetId)
+        : [];
+      for (const draftNodeId of draftIds) {
         const draftRoot = project.widgetsById[draftNodeId];
         const draftTree = buildWidgetTree(project, draftNodeId);
         const draftBounds = draftRoot && draftTree ? getWidgetTreeBounds(draftTree, draftRoot.x, draftRoot.y) : null;
@@ -180,8 +193,12 @@ export function StateBoardSurface({
         offsetX: root.x,
         offsetY: root.y,
       });
-      const section = project.sectionsById[project.sectionIdByStateId[variant.id]];
-      for (const draftNodeId of section?.draftNodeIds ?? []) {
+      const sectionId = makeSectionId(variant.id);
+      const sectionNode = project.treeNodesById?.[sectionId];
+      const draftIds: string[] = sectionNode?.kind === "state_section"
+        ? sectionNode.childrenIds.filter((cid) => cid !== variant.rootWidgetId)
+        : [];
+      for (const draftNodeId of draftIds) {
         const draftRoot = project.widgetsById[draftNodeId];
         const draftTree = buildWidgetTree(project, draftNodeId);
         if (!draftRoot || !draftTree) continue;

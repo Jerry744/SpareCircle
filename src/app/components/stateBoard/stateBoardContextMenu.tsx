@@ -6,6 +6,7 @@ import {
 } from "../ui/context-menu";
 import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { WidgetType } from "../../backend/types/widget";
+import { makeSectionId } from "../../backend/stateBoard/sectionModel";
 
 export interface StateBoardContextMenuData {
   kind: "canvas" | "screen" | "widget";
@@ -99,9 +100,34 @@ export function StateBoardContextMenuContent({
   const parentId = singleWidget?.parentId ?? null;
   const siblings = parentId ? (project.widgetsById[parentId]?.childrenIds ?? []) : [];
   const index = singleWidget ? siblings.indexOf(singleWidget.id) : -1;
+  const isScreenFrame = singleWidget?.type === "Screen";
+  const frameVariantId = isScreenFrame && data.targetVariantId ? data.targetVariantId : null;
+  const frameBoard = frameVariantId ? project.stateBoardsById[project.variantsById[frameVariantId]?.boardId ?? ""] : null;
+  const frameIsCanonical = frameBoard?.canonicalVariantId === frameVariantId;
+  const sectionId = makeSectionId(frameVariantId ?? "");
+  const sectionNode = frameVariantId ? project.treeNodesById?.[sectionId] : undefined;
+  const isDraftFrame = sectionNode?.kind === "state_section" && sectionNode.childrenIds.includes(singleWidget?.id ?? "") &&
+    singleWidget?.id !== project.variantsById[frameVariantId ?? ""]?.rootWidgetId;
 
   return (
     <ContextMenuContent className={menuClassName}>
+      {isScreenFrame ? (
+        <>
+          <ContextMenuItem
+            className={itemClassName}
+            disabled={frameIsCanonical}
+            onSelect={() => { if (frameVariantId) onSetCanonical(frameVariantId); }}
+          >
+            Set as Canonical
+          </ContextMenuItem>
+          <ContextMenuSeparator className={separatorClassName} />
+        </>
+      ) : null}
+      {isScreenFrame && isDraftFrame ? (
+        <>
+          <ContextMenuSeparator className={separatorClassName} />
+        </>
+      ) : null}
       <ContextMenuItem
         className={itemClassName}
         disabled={mixedVis}
