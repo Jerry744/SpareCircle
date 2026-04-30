@@ -108,6 +108,17 @@ export function StateBoardSurface({
     }
     return out;
   }, [project.widgetsById, variants]);
+  const draftFrameBounds = useMemo(() => {
+    const out: { widgetId: string; variant: Variant; x: number; y: number; width: number; height: number }[] = [];
+    for (const variant of variants) {
+      const section = project.sectionsById[project.sectionIdByStateId[variant.id]];
+      for (const draftNodeId of section?.draftNodeIds ?? []) {
+        const draftRoot = project.widgetsById[draftNodeId];
+        if (draftRoot) out.push({ widgetId: draftNodeId, variant, x: draftRoot.x, y: draftRoot.y, width: draftRoot.width, height: draftRoot.height });
+      }
+    }
+    return out;
+  }, [project.widgetsById, project.sectionsById, project.sectionIdByStateId, variants]);
   const rootTreesByVariant = useMemo(() => {
     const out: Record<string, ReturnType<typeof buildWidgetTree>> = {};
     for (const variant of variants) out[variant.id] = buildWidgetTree(project, variant.rootWidgetId);
@@ -195,12 +206,17 @@ export function StateBoardSurface({
     render();
   }, [render]);
 
-  const hitTest = (world: Point): string | null => {
+  const hitTest = (world: Point): { kind: "canonical"; variantId: string } | { kind: "draft"; widgetId: string; variant: Variant } | null => {
     for (let index = variants.length - 1; index >= 0; index -= 1) {
       const frame = frameById[variants[index].id];
-      if (!frame) continue;
+      if (frame && world.x >= frame.x && world.x <= frame.x + frame.width && world.y >= frame.y && world.y <= frame.y + frame.height) {
+        return { kind: "canonical", variantId: frame.variant.id };
+      }
+    }
+    for (let index = draftFrameBounds.length - 1; index >= 0; index -= 1) {
+      const frame = draftFrameBounds[index];
       if (world.x >= frame.x && world.x <= frame.x + frame.width && world.y >= frame.y && world.y <= frame.y + frame.height) {
-        return frame.variant.id;
+        return { kind: "draft", widgetId: frame.widgetId, variant: frame.variant };
       }
     }
     return null;
@@ -208,12 +224,22 @@ export function StateBoardSurface({
 
   const updateSelection = (variantId: string, additive: boolean) => {
     onSelectVariant(variantId);
-    const nextVariantIds = additive
-      ? selectedVariantIds.includes(variantId)
-        ? selectedVariantIds.filter((id) => id !== variantId)
-        : [...selectedVariantIds, variantId]
-      : [variantId];
-    onSelectionChange({ kind: "screen", variantIds: nextVariantIds });
+    const rootWidgetId = project.variantsById[variantId]?.rootWidgetId;
+    if (!rootWidgetId) return;
+    const currentWidgetIds = getSelectedWidgetIdsForVariant(selection, variantId);
+    const nextWidgetIds = additive
+      ? currentWidgetIds.includes(rootWidgetId)
+        ? currentWidgetIds.filter((id) => id !== rootWidgetId)
+        : [...currentWidgetIds, rootWidgetId]
+      : [rootWidgetId];
+    onSelectionChange(
+      additive
+        ? normalizeStateBoardSelection({
+            variantIds: selectedVariantIds,
+            widgetIdsByVariant: { ...selectedWidgetIdsByVariant, [variantId]: nextWidgetIds },
+          })
+        : { kind: "widget", variantId, widgetIds: nextWidgetIds },
+    );
   };
 
   const startDrag = (variantIds: string[], world: Point) => {
@@ -387,9 +413,28 @@ export function StateBoardSurface({
       return;
     }
 
-    const dragIds = selectedVariantIds.includes(hit) && !additive ? selectedVariantIds : [hit];
-    updateSelection(hit, additive);
-    startDrag(dragIds, world);
+    if (hit.kind === "draft") {
+      onSelectVariant(hit.variant.id);
+      const currentWidgetIds = getSelectedWidgetIdsForVariant(selection, hit.variant.id);
+      const nextWidgetIds = additive
+        ? currentWidgetIds.includes(hit.widgetId)
+          ? currentWidgetIds.filter((id) => id !== hit.widgetId)
+          : [...currentWidgetIds, hit.widgetId]
+        : [hit.widgetId];
+      onSelectionChange(
+        additive
+          ? normalizeStateBoardSelection({
+              variantIds: selectedVariantIds,
+              widgetIdsByVariant: { ...selectedWidgetIdsByVariant, [hit.variant.id]: nextWidgetIds },
+            })
+          : { kind: "widget", variantId: hit.variant.id, widgetIds: nextWidgetIds },
+      );
+      return;
+    }
+
+    const hitVariantId = hit.variantId;
+    updateSelection(hitVariantId, additive);
+    startDrag([hitVariantId], world);
   };
 
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -496,14 +541,23 @@ export function StateBoardSurface({
       return;
     }
 
-    const hitVariantId = hitTest(world);
-    if (hitVariantId) {
-      onSelectVariant(hitVariantId);
-      onSelectionChange({ kind: "screen", variantIds: [hitVariantId] });
-      setContextMenuData({
-        kind: "screen",
-        targetVariantId: hitVariantId,
-      });
+    const frameHit = hitTest(world);
+    if (frameHit) {
+      if (frameHit.kind === "draft") {
+        onSelectVariant(frameHit.variant.id);
+        onSelectionChange({ kind: "widget", variantId: frameHit.variant.id, widgetIds: [frameHit.widgetId] });
+        setContextMenuData({
+          kind: "screen",
+          targetVariantId: frameHit.variant.id,
+        });
+      } else {
+        onSelectVariant(frameHit.variantId);
+        onSelectionChange({ kind: "widget", variantId: frameHit.variantId, widgetIds: [project.variantsById[frameHit.variantId]?.rootWidgetId ?? ""].filter(Boolean) });
+        setContextMenuData({
+          kind: "screen",
+          targetVariantId: frameHit.variantId,
+        });
+      }
       return;
     }
 
@@ -592,7 +646,8 @@ export function StateBoardSurface({
               const frame = frameById[variant.id];
               if (!frame) return null;
               const isCanonical = board.canonicalVariantId === variant.id;
-              const isSelected = selectedVariantIds.includes(variant.id);
+              const isSelected = selectedVariantIds.includes(variant.id)
+                || getSelectedWidgetIdsForVariant(selection, variant.id).includes(variant.rootWidgetId);
               return (
                 <section
                   key={variant.id}
@@ -611,6 +666,28 @@ export function StateBoardSurface({
                   </div>
                   <div className="pointer-events-none flex h-full items-center justify-center text-xs text-neutral-500">
                     {frame.width} × {frame.height}
+                  </div>
+                </section>
+              );
+            })}
+            {draftFrameBounds.map((frame) => {
+              const isSelected = getSelectedWidgetIdsForVariant(selection, frame.variant.id).includes(frame.widgetId);
+              return (
+                <section
+                  key={frame.widgetId}
+                  className={`pointer-events-none absolute rounded border shadow-xl ${
+                    isSelected ? "border-highlight-500 ring-2 ring-highlight-500/40" : "border-neutral-700"
+                  }`}
+                  style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
+                >
+                  <div className="absolute -top-7 left-0 flex items-center gap-2 text-xs text-neutral-200">
+                    <span className="font-semibold">{frame.variant.name}</span>
+                    <span className="inline-flex items-center gap-1 rounded bg-warning-500/20 px-2 py-0.5 text-[11px] text-warning-200">
+                      Draft
+                    </span>
+                  </div>
+                  <div className="pointer-events-none flex h-full items-center justify-center text-xs text-neutral-500">
+                    {frame.width} x {frame.height}
                   </div>
                 </section>
               );

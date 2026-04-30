@@ -8,7 +8,7 @@ import type { Variant } from "../../backend/types/variant";
 import { CONTAINER_WIDGET_TYPES, type WidgetNode } from "../../backend/types/widget";
 import { ID_PREFIX, makeId } from "../../backend/types/idPrefixes";
 import type { StateBoardSelection } from "./stateBoardSelection";
-import { getSelectedVariantIds, getSelectedWidgetIdsForVariant } from "./stateBoardSelection";
+import { getSelectedVariantIds, getSelectedWidgetIdsByVariant, getSelectedWidgetIdsForVariant } from "./stateBoardSelection";
 
 type DropPosition = "before" | "inside" | "after";
 type DragSource =
@@ -121,6 +121,38 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     })
     .filter((item): item is SectionGroup => Boolean(item)), [board.variantIds, project.sectionIdByStateId, project.sectionsById, project.variantsById, project.widgetsById]);
 
+  const selectedFrameRootIdsByVariant = useMemo(() => {
+    const result: Record<string, Set<string>> = {};
+    const selectedWidgetIdsByVariant = getSelectedWidgetIdsByVariant(selection);
+    for (const [variantId, widgetIds] of Object.entries(selectedWidgetIdsByVariant)) {
+      const variant = project.variantsById[variantId];
+      if (!variant) continue;
+      const sectionId = project.sectionIdByStateId[variant.id];
+      const section = project.sectionsById[sectionId];
+      if (!section) continue;
+      const frameRootIds = new Set<string>([variant.rootWidgetId, ...section.draftNodeIds]);
+      const roots = new Set<string>();
+      for (const widgetId of widgetIds) {
+        if (frameRootIds.has(widgetId)) {
+          roots.add(widgetId);
+          continue;
+        }
+        let current = project.widgetsById[widgetId];
+        while (current?.parentId) {
+          const parent = project.widgetsById[current.parentId];
+          if (!parent) break;
+          if (frameRootIds.has(parent.id)) {
+            roots.add(parent.id);
+            break;
+          }
+          current = parent;
+        }
+      }
+      if (roots.size > 0) result[variantId] = roots;
+    }
+    return result;
+  }, [selection, project.variantsById, project.sectionIdByStateId, project.sectionsById, project.widgetsById]);
+
   const addState = () => {
     const variantId = makeId(ID_PREFIX.variant);
     onVariantAction({ type: "createVariant", boardId: board.id, mode: "blank", name: "State", variantId });
@@ -150,19 +182,6 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
   const clearDrag = () => {
     setDragging(null);
     setDropTarget(null);
-  };
-
-  const selectScreenRow = (variantId: string, event: React.MouseEvent<HTMLDivElement>) => {
-    onSelectVariant(variantId);
-    const isCtrl = event.metaKey || event.ctrlKey;
-    const selectedVariantIds = getSelectedVariantIds(selection);
-    const nextVariantIds = isCtrl
-      ? selectedVariantIds.includes(variantId)
-        ? selectedVariantIds.filter((id) => id !== variantId)
-        : [...selectedVariantIds, variantId]
-      : [variantId];
-    onSelectionChange({ kind: "screen", variantIds: nextVariantIds });
-    rangeAnchorRef.current = null;
   };
 
   const selectWidgetRow = (
@@ -237,14 +256,18 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     const expanded = isRoot ? true : expandedIds[widget.id] ?? true;
     const variantVisibleIds = collectVisibleIds(root, expandedIds).filter((id) => id !== root.id);
     const isActiveScreen = isScreenRoot && variant.id === activeVariantId && widget.id === variant.rootWidgetId;
+    const isCanonicalFrameRoot = isScreenRoot && isCanonicalFrame && board.canonicalVariantId === variant.id;
     const isSelected = isRoot
-      ? getSelectedVariantIds(selection).includes(variant.id)
+      ? (
+          getSelectedWidgetIdsForVariant(selection, variant.id).includes(widget.id) ||
+          Boolean(selectedFrameRootIdsByVariant[variant.id]?.has(widget.id)) ||
+          (isCanonicalFrameRoot && getSelectedVariantIds(selection).includes(variant.id))
+        )
       : getSelectedWidgetIdsForVariant(selection, variant.id).includes(widget.id);
     const isDropTarget = dropTarget?.key === widget.id;
     const dropBefore = isDropTarget && dropTarget.position === "before";
     const dropInside = isDropTarget && dropTarget.position === "inside";
     const dropAfter = isDropTarget && dropTarget.position === "after";
-    const isCanonical = isScreenRoot && isCanonicalFrame && board.canonicalVariantId === variant.id;
 
     return (
       <div key={widget.id}>
@@ -257,16 +280,25 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
                 : "hover:bg-neutral-600 text-neutral-200"
           }`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
-          onClick={(event) =>
-            isRoot
-              ? isScreenRoot
-                ? selectScreenRow(variant.id, event)
-                : selectWidgetRow(widget.id, variant.id, [widget.id], event)
-              : selectWidgetRow(widget.id, variant.id, variantVisibleIds, event)
-          }
+          onClick={(event) => {
+            if (isRoot) {
+              onSelectVariant(variant.id);
+              const isCtrl = event.metaKey || event.ctrlKey;
+              const currentWidgetIds = getSelectedWidgetIdsForVariant(selection, variant.id);
+              const nextIds = isCtrl
+                ? currentWidgetIds.includes(widget.id)
+                  ? currentWidgetIds.filter((id) => id !== widget.id)
+                  : [...currentWidgetIds, widget.id]
+                : [widget.id];
+              onSelectionChange({ kind: "widget", variantId: variant.id, widgetIds: nextIds });
+              rangeAnchorRef.current = null;
+            } else {
+              selectWidgetRow(widget.id, variant.id, variantVisibleIds, event);
+            }
+          }}
           draggable
           onDragStart={(event) => {
-            const source: DragSource = isScreenRoot ? { kind: "screen", variantId: variant.id } : { kind: "widget", widgetId: widget.id };
+            const source: DragSource = isCanonicalFrameRoot ? { kind: "screen", variantId: variant.id } : { kind: "widget", widgetId: widget.id };
             setDragging(source);
             event.dataTransfer.effectAllowed = "move";
             event.dataTransfer.setData("state-hierarchy-source", JSON.stringify(source));
@@ -303,8 +335,8 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
             <div className="w-5 flex items-center justify-center">{isScreenRoot ? <Monitor size={13} /> : null}</div>
           )}
           <span className="text-xs flex-1 truncate">{isRoot && isCanonicalFrame ? variant.name : widget.name}</span>
-          {isCanonical && isRoot ? <Star size={12} className="text-amber-300 fill-amber-300" /> : null}
-          <span className="text-[10px] text-neutral-400">{isScreenRoot ? (isCanonical ? "Canonical Frame" : "Draft Frame") : widget.type}</span>
+          {isCanonicalFrameRoot && isRoot ? <Star size={12} className="text-amber-300 fill-amber-300" /> : null}
+          <span className="text-[10px] text-neutral-400">{isScreenRoot ? (isCanonicalFrameRoot ? "Canonical Frame" : "Draft Frame") : widget.type}</span>
           {isScreenRoot ? (
             <button
               className="p-0.5 hover:bg-neutral-500 rounded text-neutral-300 opacity-0 group-hover:opacity-100"
