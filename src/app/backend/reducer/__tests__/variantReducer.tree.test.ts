@@ -122,3 +122,26 @@ describe("tree - createVariant adds section to tree", () => {
     expect(root.childrenIds).toContain(sectionId);
   });
 });
+
+describe("tree - handleDuplicateSectionFrame tree-first", () => {
+  it("does not write to sectionsById.draftNodeIds", () => {
+    const project = makeFixture();
+    const sectionId = makeSectionId("variant-root");
+    const result = variantReducer(project, {
+      type: "duplicateSectionFrame",
+      sectionId,
+      frameId: "screen-root",
+      newFrameId: "draft-frame-root",
+      now: NOW,
+    });
+
+    // sectionsById should NOT have the new draft in draftNodeIds
+    // (it is only populated by syncSectionIndexes derivation)
+    expect(result.sectionsById[sectionId]?.draftNodeIds).toBeDefined();
+    // The new frame should be in treeNodesById childrenIds
+    const sectionNode = result.treeNodesById?.[sectionId] as StateSectionNode | undefined;
+    expect(sectionNode?.childrenIds).toContain("draft-frame-root");
+    // The new frame should have frameRole=draft
+    expect(result.widgetsById["draft-frame-root"]?.frameRole).toBe("draft");
+  });
+});

@@ -3,6 +3,7 @@ import { createEmptyProjectV2 } from "../../validation/createEmptyProjectV2";
 import { deriveSectionIndexes, makeScreenRootId, makeSectionId } from "../sectionModel";
 import type { ProjectSnapshotV2, StateSectionNode, ScreenRootNode } from "../../types/projectV2";
 import type { WidgetNode } from "../../types/widget";
+import { parseProjectSnapshotV2 } from "../../validation/projectV2Parser";
 
 const NOW = "2026-04-23T10:00:00.000Z";
 
@@ -103,5 +104,24 @@ describe("tree - ScreenRootNode invariants", () => {
         expect(parent?.kind).toBe("screen_root");
       }
     }
+  });
+});
+
+describe("tree - parser requires treeNodesById", () => {
+  it("rejects project without treeNodesById", () => {
+    const result = parseProjectSnapshotV2({
+      schemaVersion: 2,
+      projectName: "test",
+      navigationMap: { stateNodes: {}, stateNodeOrder: [], transitions: {}, transitionOrder: [], initialStateNodeId: "", viewport: { x: 0, y: 0, zoom: 1 } },
+      stateBoardsById: {},
+      variantsById: {},
+      widgetsById: {},
+      transitionEventBindings: {},
+      screenGroups: {},
+      screenGroupOrder: [],
+      styleTokens: [],
+      assets: {},
+    });
+    expect(result.ok).toBe(false);
   });
 });
