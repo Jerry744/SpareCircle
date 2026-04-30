@@ -7,6 +7,7 @@ import type { VariantAction } from "../../backend/reducer/variantActions";
 import { buildWidgetTree } from "../../backend/tree";
 import { mapPaletteWidgetToType, type Point } from "../../backend/editorStore";
 import { getNextWidgetId } from "../../backend/widgets";
+import { ID_PREFIX, makeId } from "../../backend/types/idPrefixes";
 import type { Camera, MarqueeState } from "../canvasViewport/types";
 import { renderCanvasBackdrop, renderWidgetTree } from "../canvasViewport/render";
 import { screenToWorldForCamera } from "../canvasViewport/utils";
@@ -34,6 +35,7 @@ interface StateBoardSurfaceProps {
   onSelectionChange(selection: StateBoardSelection): void;
   onSelectVariant(variantId: string): void;
   onVariantAction(action: VariantAction): void;
+  onEndContinuousChange?(): void;
 }
 
 type DragState =
@@ -48,6 +50,7 @@ export function StateBoardSurface({
   onSelectionChange,
   onSelectVariant,
   onVariantAction,
+  onEndContinuousChange,
 }: StateBoardSurfaceProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -60,6 +63,7 @@ export function StateBoardSurface({
   const [contextMenuData, setContextMenuData] = useState<StateBoardContextMenuData | null>(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const clipboardWidgetIdsRef = useRef<string[]>([]);
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
 
@@ -109,10 +113,39 @@ export function StateBoardSurface({
     for (const variant of variants) out[variant.id] = buildWidgetTree(project, variant.rootWidgetId);
     return out;
   }, [project, variants]);
+  const hitTreesByVariant = useMemo(() => {
+    const out: Record<string, ReturnType<typeof buildWidgetTree>[]> = {};
+    for (const variant of variants) {
+      const section = project.sectionsById[project.sectionIdByStateId[variant.id]];
+      out[variant.id] = [
+        buildWidgetTree(project, variant.rootWidgetId),
+        ...(section?.draftNodeIds ?? []).map((draftNodeId) => buildWidgetTree(project, draftNodeId)),
+      ];
+    }
+    return out;
+  }, [project, variants]);
+  const sectionBoundsByVariant = useMemo(() => {
+    const out: Record<string, Rect> = {};
+    for (const variant of variants) {
+      const root = project.widgetsById[variant.rootWidgetId];
+      const rootTree = rootTreesByVariant[variant.id];
+      let bounds = root && rootTree ? getWidgetTreeBounds(rootTree, root.x, root.y) : null;
+      const section = project.sectionsById[project.sectionIdByStateId[variant.id]];
+      for (const draftNodeId of section?.draftNodeIds ?? []) {
+        const draftRoot = project.widgetsById[draftNodeId];
+        const draftTree = buildWidgetTree(project, draftNodeId);
+        const draftBounds = draftRoot && draftTree ? getWidgetTreeBounds(draftTree, draftRoot.x, draftRoot.y) : null;
+        if (draftBounds) bounds = unionRect(bounds, draftBounds);
+      }
+      if (bounds) out[variant.id] = bounds;
+    }
+    return out;
+  }, [project, rootTreesByVariant, variants]);
 
   const selectedVariantIds = getSelectedVariantIds(selection);
   const selectedWidgetIds = getSelectedWidgetIds(selection);
   const selectedWidgetIdsByVariant = getSelectedWidgetIdsByVariant(selection);
+  const canonicalFrameIds = useMemo(() => new Set(variants.map((variant) => variant.rootWidgetId)), [variants]);
 
   const render = useCallback(() => {
     const canvas = canvasRef.current;
@@ -136,6 +169,22 @@ export function StateBoardSurface({
         offsetX: root.x,
         offsetY: root.y,
       });
+      const section = project.sectionsById[project.sectionIdByStateId[variant.id]];
+      for (const draftNodeId of section?.draftNodeIds ?? []) {
+        const draftRoot = project.widgetsById[draftNodeId];
+        const draftTree = buildWidgetTree(project, draftNodeId);
+        if (!draftRoot || !draftTree) continue;
+        renderWidgetTree({
+          ctx,
+          project,
+          rootTree: draftTree,
+          selectedWidgetIds: selectedWidgetIdsByVariant[variant.id] ?? [],
+          imageCache: imageCacheRef.current,
+          rerender: render,
+          offsetX: draftRoot.x,
+          offsetY: draftRoot.y,
+        });
+      }
     }
     ctx.restore();
   }, [camera, project, rootTreesByVariant, selectedWidgetIdsByVariant, variants]);
@@ -186,6 +235,58 @@ export function StateBoardSurface({
     setDrag({ kind: "widget", variantId, startWorld: world, starts });
   };
 
+  const makeDuplicateRootIds = (widgetIds: string[]) => widgetIds.map(() => makeId(ID_PREFIX.variant));
+
+  const copyWidgets = (widgetIds: string[]) => {
+    clipboardWidgetIdsRef.current = filterTopLevelWidgetIds(widgetIds, project.widgetsById);
+  };
+
+  const pasteWidgets = () => {
+    const widgetIds = clipboardWidgetIdsRef.current.filter((widgetId) => Boolean(project.widgetsById[widgetId]));
+    const activeVariant = project.variantsById[activeVariantId];
+    if (!activeVariant || widgetIds.length === 0) return;
+    const rootIds = makeDuplicateRootIds(widgetIds);
+    onVariantAction({
+      type: "duplicateVariantWidgets",
+      variantId: activeVariant.id,
+      widgetIds,
+      targetParentId: activeVariant.rootWidgetId,
+      rootWidgetIds: rootIds,
+      offset: { x: 16, y: 16 },
+    });
+    onSelectionChange({ kind: "widget", variantId: activeVariant.id, widgetIds: rootIds });
+  };
+
+  const deleteWidgets = (widgetIds: string[]) => {
+    const deletableIds = widgetIds.filter((widgetId) => !canonicalFrameIds.has(widgetId));
+    if (deletableIds.length === 0) return;
+    onVariantAction({ type: "deleteVariantWidgets", widgetIds: deletableIds });
+    onSelectionChange({ kind: "widget", variantId: activeVariantId, widgetIds: [] });
+  };
+
+  const duplicateWidgetsForDrag = (variantId: string, widgetIds: string[], world: Point) => {
+    const roots = filterTopLevelWidgetIds(widgetIds, project.widgetsById);
+    if (roots.length === 0) return false;
+    const rootIds = makeDuplicateRootIds(roots);
+    onVariantAction({
+      type: "duplicateVariantWidgets",
+      variantId,
+      widgetIds: roots,
+      rootWidgetIds: rootIds,
+      offset: { x: 16, y: 16 },
+    });
+    const starts: Record<string, Point> = {};
+    roots.forEach((sourceId, index) => {
+      const widget = project.widgetsById[sourceId];
+      const newId = rootIds[index];
+      if (widget && newId) starts[newId] = { x: widget.x + 16, y: widget.y + 16 };
+    });
+    onSelectVariant(variantId);
+    onSelectionChange({ kind: "widget", variantId, widgetIds: rootIds });
+    setDrag({ kind: "widget", variantId, startWorld: world, starts });
+    return true;
+  };
+
   const panBy = (clientX: number, clientY: number) => {
     const dx = clientX - lastMousePos.current.x;
     const dy = clientY - lastMousePos.current.y;
@@ -198,7 +299,9 @@ export function StateBoardSurface({
     const hitSelection = computeStateBoardMarqueeSelection({
       variantIds: variants.map((variant) => variant.id),
       frameById,
-      rootTreesByVariant,
+      rootTreesByVariant: hitTreesByVariant,
+      ignoredWidgetIds: canonicalFrameIds,
+      includeScreenRoots: true,
       marquee,
     });
     const nextSelection = marquee.additive
@@ -233,15 +336,22 @@ export function StateBoardSurface({
     const world = screenToWorld(event.clientX, event.clientY);
     const widgetHit = getStateBoardWidgetHit(
       variants.map((variant) => variant.id),
-      rootTreesByVariant,
+      hitTreesByVariant,
       selectedWidgetIds,
       world,
+      canonicalFrameIds,
     );
     const hit = hitTest(world);
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
     if (widgetHit) {
       onSelectVariant(widgetHit.variantId);
       const currentWidgetIds = getSelectedWidgetIdsForVariant(selection, widgetHit.variantId);
+      const altDuplicate = event.altKey && !additive;
+
+      if (altDuplicate && currentWidgetIds.includes(widgetHit.widget.id)) {
+        const dragIds = filterTopLevelWidgetIds(currentWidgetIds, project.widgetsById);
+        if (duplicateWidgetsForDrag(widgetHit.variantId, dragIds.length > 0 ? dragIds : [widgetHit.widget.id], world)) return;
+      }
 
       if (!additive && currentWidgetIds.includes(widgetHit.widget.id)) {
         const dragIds = filterTopLevelWidgetIds(currentWidgetIds, project.widgetsById);
@@ -266,6 +376,7 @@ export function StateBoardSurface({
           : { kind: "widget", variantId: widgetHit.variantId, widgetIds: nextWidgetIds },
       );
       if (!additive && nextWidgetIds.length > 0) {
+        if (altDuplicate && duplicateWidgetsForDrag(widgetHit.variantId, nextWidgetIds, world)) return;
         startWidgetDrag(widgetHit.variantId, filterTopLevelWidgetIds(nextWidgetIds, project.widgetsById), world);
       }
       return;
@@ -299,6 +410,7 @@ export function StateBoardSurface({
           type: "moveVariantScreen",
           variantId,
           position: { x: Math.round(start.x + dx), y: Math.round(start.y + dy) },
+          historyMode: "merge",
         });
       }
       return;
@@ -316,6 +428,7 @@ export function StateBoardSurface({
       onVariantAction({
         type: "setVariantWidgetPositions",
         positions,
+        historyMode: "merge",
       });
     }
   };
@@ -328,6 +441,7 @@ export function StateBoardSurface({
     }
     if (marquee) finishMarquee();
     setDrag(null);
+    onEndContinuousChange?.();
   };
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
@@ -362,9 +476,10 @@ export function StateBoardSurface({
     const world = screenToWorld(event.clientX, event.clientY);
     const widgetHit = getStateBoardWidgetHit(
       variants.map((variant) => variant.id),
-      rootTreesByVariant,
+      hitTreesByVariant,
       selectedWidgetIds,
       world,
+      canonicalFrameIds,
     );
     if (widgetHit) {
       const currentWidgetIds = getSelectedWidgetIdsForVariant(selection, widgetHit.variantId);
@@ -426,6 +541,22 @@ export function StateBoardSurface({
           }}
           onDrop={handleDrop}
           onKeyDown={(event) => {
+            const isModifier = event.metaKey || event.ctrlKey;
+            if ((event.key === "Delete" || event.key === "Backspace") && selectedWidgetIds.length > 0) {
+              event.preventDefault();
+              deleteWidgets(selectedWidgetIds);
+              return;
+            }
+            if (isModifier && event.key.toLowerCase() === "c") {
+              event.preventDefault();
+              copyWidgets(selectedWidgetIds);
+              return;
+            }
+            if (isModifier && event.key.toLowerCase() === "v") {
+              event.preventDefault();
+              pasteWidgets();
+              return;
+            }
             if (event.code === "Space" && !isSpacePressed) {
               event.preventDefault();
               setIsSpacePressed(true);
@@ -444,10 +575,24 @@ export function StateBoardSurface({
           <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
           <div className="absolute inset-0 origin-top-left" style={worldTransform(camera)}>
             {variants.map((variant) => {
+              const bounds = sectionBoundsByVariant[variant.id];
+              if (!bounds) return null;
+              const isActive = selectedVariantIds.includes(variant.id) || Boolean(selectedWidgetIdsByVariant[variant.id]?.length);
+              return (
+                <div
+                  key={`${variant.id}-section-bounds`}
+                  className={`pointer-events-none absolute rounded border border-dashed ${
+                    isActive ? "border-highlight-400/80 bg-highlight-500/5" : "border-neutral-500/40"
+                  }`}
+                  style={{ left: bounds.x - 12, top: bounds.y - 12, width: bounds.width + 24, height: bounds.height + 24 }}
+                />
+              );
+            })}
+            {variants.map((variant) => {
               const frame = frameById[variant.id];
               if (!frame) return null;
               const isCanonical = board.canonicalVariantId === variant.id;
-              const isSelected = selectedVariantIds.includes(variant.id) || activeVariantId === variant.id;
+              const isSelected = selectedVariantIds.includes(variant.id);
               return (
                 <section
                   key={variant.id}
@@ -502,9 +647,41 @@ export function StateBoardSurface({
         onSetCanonical={(variantId) => {
           onVariantAction({ type: "setCanonicalVariant", boardId: board.id, variantId });
         }}
+        onCopyWidgets={copyWidgets}
+        onPasteWidgets={pasteWidgets}
+        onDeleteWidgets={deleteWidgets}
       />
     </ContextMenu>
   );
+}
+
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+type WidgetTree = NonNullable<ReturnType<typeof buildWidgetTree>>;
+
+function unionRect(a: Rect | null, b: Rect): Rect {
+  if (!a) return b;
+  const left = Math.min(a.x, b.x);
+  const top = Math.min(a.y, b.y);
+  const right = Math.max(a.x + a.width, b.x + b.width);
+  const bottom = Math.max(a.y + a.height, b.y + b.height);
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function getWidgetTreeBounds(root: WidgetTree, offsetX: number, offsetY: number): Rect | null {
+  const walk = (node: WidgetTree, x: number, y: number): Rect => {
+    let bounds: Rect = { x, y, width: node.width, height: node.height };
+    for (const child of node.children) {
+      bounds = unionRect(bounds, walk(child as WidgetTree, x + child.x, y + child.y));
+    }
+    return bounds;
+  };
+  return walk(root, offsetX, offsetY);
 }
 
 function worldTransform(camera: Camera): React.CSSProperties {

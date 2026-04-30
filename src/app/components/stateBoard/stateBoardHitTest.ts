@@ -12,19 +12,24 @@ export interface StateBoardWidgetHit {
 
 export function getStateBoardWidgetHit(
   variantIds: string[],
-  rootTreesByVariant: Record<string, WidgetTreeNode | null>,
+  rootTreesByVariant: Record<string, WidgetTreeNode | null | Array<WidgetTreeNode | null>>,
   selectedWidgetIds: string[],
   point: Point,
+  ignoredWidgetIds: Set<string> = new Set(),
 ): StateBoardWidgetHit | null {
   for (let variantIndex = variantIds.length - 1; variantIndex >= 0; variantIndex -= 1) {
     const variantId = variantIds[variantIndex];
-    const rootTree = rootTreesByVariant[variantId];
-    if (!rootTree) continue;
+    const rootTrees = Array.isArray(rootTreesByVariant[variantId])
+      ? rootTreesByVariant[variantId] as Array<WidgetTreeNode | null>
+      : [rootTreesByVariant[variantId] as WidgetTreeNode | null];
 
-    const items = flattenWidgetTree(rootTree);
+    for (let rootIndex = rootTrees.length - 1; rootIndex >= 0; rootIndex -= 1) {
+      const rootTree = rootTrees[rootIndex];
+      if (!rootTree) continue;
+      const items = flattenWidgetTree(rootTree);
     for (let index = items.length - 1; index >= 0; index -= 1) {
       const item = items[index];
-      if (item.widget.type === "Screen" || item.widget.visible === false) continue;
+      if (ignoredWidgetIds.has(item.widget.id) || item.widget.visible === false) continue;
 
       const withinBody =
         point.x >= item.absX &&
@@ -45,6 +50,7 @@ export function getStateBoardWidgetHit(
         absY: item.absY,
         mode: inResizeHandle ? "resize" : "body",
       };
+    }
     }
   }
 

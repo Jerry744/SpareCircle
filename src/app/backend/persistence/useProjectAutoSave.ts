@@ -16,12 +16,19 @@ const SAVE_DEBOUNCE_MS = 500;
 export function useProjectAutoSave(
   project: ProjectSnapshot,
   dispatch: Dispatch<EditorAction>,
+  enabled = true,
 ): { isPersistenceReady: boolean } {
   const [isPersistenceReady, setIsPersistenceReady] = useState(false);
   const saveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    if (!enabled) {
+      setIsPersistenceReady(true);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     void (async () => {
       try {
@@ -49,10 +56,10 @@ export function useProjectAutoSave(
     return () => {
       cancelled = true;
     };
-  }, [dispatch]);
+  }, [dispatch, enabled]);
 
   useEffect(() => {
-    if (!isPersistenceReady) {
+    if (!enabled || !isPersistenceReady) {
       return;
     }
 
@@ -74,7 +81,7 @@ export function useProjectAutoSave(
         saveTimerRef.current = null;
       }
     };
-  }, [project, isPersistenceReady]);
+  }, [project, isPersistenceReady, enabled]);
 
   return { isPersistenceReady };
 }

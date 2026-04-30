@@ -46,8 +46,8 @@ describe("createEmptyProjectV2", () => {
     expect(project.variantsById["variant-root"].status).toBe("canonical");
     expect(project.widgetsById["screen-1-root"].type).toBe("Screen");
     expect(project.widgetsById["screen-1-root"].parentId).toBeNull();
-    expect(project.sectionIdByStateId["state-node-alpha"]).toBe("section-alpha");
-    expect(project.sectionsById["section-alpha"].canonicalFrameId).toBe("screen-1-root");
+    expect(project.sectionIdByStateId["variant-root"]).toBe("section-root");
+    expect(project.sectionsById["section-root"].canonicalFrameId).toBe("screen-1-root");
     expect(project.screenTreeByScreenId["state-node-alpha"].rootWidgetIds).toEqual(["screen-1-root"]);
   });
 
@@ -68,7 +68,7 @@ describe("createEmptyProjectV2", () => {
     const result = parseProjectSnapshotV2(legacy);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.sectionsById["section-alpha"].canonicalFrameId).toBe("screen-1-root");
+      expect(result.value.sectionsById["section-root"].canonicalFrameId).toBe("screen-1-root");
     }
   });
 });
@@ -207,13 +207,24 @@ describe("runProjectV2CrossRefChecks", () => {
 
   it("flags duplicate or stale canonical section bindings", () => {
     const project = makeFixture();
-    project.sectionsById["section-alpha"] = {
-      ...project.sectionsById["section-alpha"],
+    project.sectionsById["section-root"] = {
+      ...project.sectionsById["section-root"],
       canonicalFrameId: "screen-ghost",
     };
     const result = runProjectV2CrossRefChecks(project);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/canonicalFrameId/);
+  });
+
+  it("flags Variant root resolution mismatches against the StateBoard", () => {
+    const project = makeFixture();
+    project.widgetsById["screen-1-root"] = {
+      ...project.widgetsById["screen-1-root"],
+      width: project.stateBoardsById["board-alpha"].meta.width + 1,
+    };
+    const result = runProjectV2CrossRefChecks(project);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/resolution/);
   });
 
   it("flags INV-8 when two bindings target the same Transition", () => {

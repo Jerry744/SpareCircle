@@ -1,11 +1,12 @@
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Eye, EyeOff, FolderOpen, Monitor, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Eye, EyeOff, FolderOpen, Monitor, Plus, Star, Trash2 } from "lucide-react";
 import type { VariantAction } from "../../backend/reducer/variantActions";
 import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { StateBoard } from "../../backend/types/stateBoard";
 import type { Variant } from "../../backend/types/variant";
 import { CONTAINER_WIDGET_TYPES, type WidgetNode } from "../../backend/types/widget";
+import { ID_PREFIX, makeId } from "../../backend/types/idPrefixes";
 import type { StateBoardSelection } from "./stateBoardSelection";
 import { getSelectedVariantIds, getSelectedWidgetIdsForVariant } from "./stateBoardSelection";
 
@@ -15,6 +16,8 @@ type DragSource =
   | { kind: "widget"; widgetId: string };
 type TreeNode = WidgetNode & { children: TreeNode[] };
 type TreeLocation = { parentId: string | null; index: number; widget: TreeNode };
+type SectionFrame = { variant: Variant; root: TreeNode; sectionId: string; isCanonicalFrame: boolean };
+type SectionGroup = { variant: Variant; sectionId: string; frames: SectionFrame[] };
 
 export interface StateHierarchyContext {
   project: ProjectSnapshotV2;
@@ -100,14 +103,49 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     window.localStorage.setItem(storageKey, JSON.stringify(expandedIds));
   }, [expandedIds, storageKey]);
 
-  const screens = useMemo(() => board.variantIds
-    .map((variantId) => {
+  const sectionGroups = useMemo(() => board.variantIds
+    .map((variantId): SectionGroup | null => {
       const variant = project.variantsById[variantId];
-      const root = variant ? buildTree(project.widgetsById, variant.rootWidgetId) : null;
-      return variant && root ? { variant, root } : null;
+      if (!variant) return null;
+      const sectionId = project.sectionIdByStateId[variant.id];
+      const section = project.sectionsById[sectionId];
+      const canonicalRoot = buildTree(project.widgetsById, variant.rootWidgetId);
+      const frames: SectionFrame[] = canonicalRoot && section
+        ? [{ variant, root: canonicalRoot, sectionId, isCanonicalFrame: true }]
+        : [];
+      for (const draftNodeId of section?.draftNodeIds ?? []) {
+        const draftTree = buildTree(project.widgetsById, draftNodeId);
+        if (draftTree) frames.push({ variant, root: draftTree, sectionId, isCanonicalFrame: false });
+      }
+      return section && frames.length > 0 ? { variant, sectionId, frames } : null;
     })
-    .filter((item): item is { variant: Variant; root: TreeNode } => Boolean(item)), [board.variantIds, project.variantsById, project.widgetsById]);
-  const section = project.sectionsById[project.sectionIdByStateId[board.stateNodeId]];
+    .filter((item): item is SectionGroup => Boolean(item)), [board.variantIds, project.sectionIdByStateId, project.sectionsById, project.variantsById, project.widgetsById]);
+
+  const addState = () => {
+    const variantId = makeId(ID_PREFIX.variant);
+    onVariantAction({ type: "createVariant", boardId: board.id, mode: "blank", name: "State", variantId });
+    onSelectVariant(variantId);
+    onSelectionChange({ kind: "screen", variantIds: [variantId] });
+  };
+
+  const duplicateFrame = (sectionId = project.sectionIdByStateId[activeVariantId], frameId = project.variantsById[activeVariantId]?.rootWidgetId) => {
+    if (!sectionId || !frameId) return;
+    onVariantAction({
+      type: "duplicateSectionFrame",
+      sectionId,
+      frameId,
+      newFrameId: makeId(ID_PREFIX.variant),
+    });
+  };
+
+  const deleteState = () => {
+    if (board.variantIds.length <= 1) return;
+    const deleteIndex = board.variantIds.indexOf(activeVariantId);
+    const fallbackVariantId = board.variantIds[deleteIndex + 1] ?? board.variantIds[deleteIndex - 1] ?? board.canonicalVariantId;
+    onVariantAction({ type: "deleteVariant", variantId: activeVariantId });
+    onSelectVariant(fallbackVariantId);
+    onSelectionChange({ kind: "screen", variantIds: [fallbackVariantId] });
+  };
 
   const clearDrag = () => {
     setDragging(null);
@@ -186,13 +224,19 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
       targetIndex: target.index + (position === "after" ? 1 : 0),
     });
   };
+  const performWidgetMoveToSection = (sourceWidgetId: string, sectionId: string) => {
+    const section = project.sectionsById[sectionId];
+    if (!section || section.draftNodeIds.includes(sourceWidgetId)) return;
+    onVariantAction({ type: "moveVariantWidget", widgetId: sourceWidgetId, targetParentId: sectionId, targetIndex: section.draftNodeIds.length });
+  };
 
-  const renderWidget = (widget: TreeNode, variant: Variant, root: TreeNode, depth: number) => {
+  const renderWidget = (widget: TreeNode, variant: Variant, root: TreeNode, depth: number, sectionId: string, isCanonicalFrame: boolean) => {
     const isRoot = widget.id === root.id;
+    const isScreenRoot = isRoot && widget.type === "Screen";
     const hasChildren = widget.children.length > 0;
     const expanded = isRoot ? true : expandedIds[widget.id] ?? true;
     const variantVisibleIds = collectVisibleIds(root, expandedIds).filter((id) => id !== root.id);
-    const isActiveScreen = isRoot && variant.id === activeVariantId;
+    const isActiveScreen = isScreenRoot && variant.id === activeVariantId && widget.id === variant.rootWidgetId;
     const isSelected = isRoot
       ? getSelectedVariantIds(selection).includes(variant.id)
       : getSelectedWidgetIdsForVariant(selection, variant.id).includes(widget.id);
@@ -200,7 +244,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     const dropBefore = isDropTarget && dropTarget.position === "before";
     const dropInside = isDropTarget && dropTarget.position === "inside";
     const dropAfter = isDropTarget && dropTarget.position === "after";
-    const isCanonical = board.canonicalVariantId === variant.id;
+    const isCanonical = isScreenRoot && isCanonicalFrame && board.canonicalVariantId === variant.id;
 
     return (
       <div key={widget.id}>
@@ -215,12 +259,14 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={(event) =>
             isRoot
-              ? selectScreenRow(variant.id, event)
+              ? isScreenRoot
+                ? selectScreenRow(variant.id, event)
+                : selectWidgetRow(widget.id, variant.id, [widget.id], event)
               : selectWidgetRow(widget.id, variant.id, variantVisibleIds, event)
           }
           draggable
           onDragStart={(event) => {
-            const source: DragSource = isRoot ? { kind: "screen", variantId: variant.id } : { kind: "widget", widgetId: widget.id };
+            const source: DragSource = isScreenRoot ? { kind: "screen", variantId: variant.id } : { kind: "widget", widgetId: widget.id };
             setDragging(source);
             event.dataTransfer.effectAllowed = "move";
             event.dataTransfer.setData("state-hierarchy-source", JSON.stringify(source));
@@ -229,14 +275,14 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
             const source = dragging;
             if (!source || (source.kind === "widget" && source.widgetId === widget.id)) return;
             event.preventDefault();
-            const position = isRoot && source.kind === "screen" ? resolveDropPosition({ ...widget, type: "Label" }, event) : resolveDropPosition(widget, event);
+            const position = isScreenRoot && source.kind === "screen" ? resolveDropPosition({ ...widget, type: "Label" }, event) : resolveDropPosition(widget, event);
             setDropTarget({ key: widget.id, position });
           }}
           onDrop={(event) => {
             event.preventDefault();
             const source = dragging;
             const position = dropTarget?.key === widget.id ? dropTarget.position : resolveDropPosition(widget, event);
-            if (source?.kind === "screen" && isRoot) performScreenReorder(source.variantId, variant.id, position);
+            if (source?.kind === "screen" && isScreenRoot) performScreenReorder(source.variantId, variant.id, position);
             if (source?.kind === "widget") performWidgetMove(source.widgetId, root, widget.id, position);
             clearDrag();
           }}
@@ -254,11 +300,24 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
               {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
           ) : (
-            <div className="w-5 flex items-center justify-center">{isRoot ? <Monitor size={13} /> : null}</div>
+            <div className="w-5 flex items-center justify-center">{isScreenRoot ? <Monitor size={13} /> : null}</div>
           )}
-          <span className="text-xs flex-1 truncate">{isRoot ? variant.name : widget.name}</span>
+          <span className="text-xs flex-1 truncate">{isRoot && isCanonicalFrame ? variant.name : widget.name}</span>
           {isCanonical && isRoot ? <Star size={12} className="text-amber-300 fill-amber-300" /> : null}
-          <span className="text-[10px] text-neutral-400">{isRoot ? (isCanonical ? "Canonical Frame" : "Draft Frame") : widget.type}</span>
+          <span className="text-[10px] text-neutral-400">{isScreenRoot ? (isCanonical ? "Canonical Frame" : "Draft Frame") : widget.type}</span>
+          {isScreenRoot ? (
+            <button
+              className="p-0.5 hover:bg-neutral-500 rounded text-neutral-300 opacity-0 group-hover:opacity-100"
+              title="Duplicate frame"
+              aria-label="Duplicate frame"
+              onClick={(event) => {
+                event.stopPropagation();
+                duplicateFrame(sectionId, widget.id);
+              }}
+            >
+              <Copy size={12} />
+            </button>
+          ) : null}
           {!isRoot && (
             <button
               className={`p-0.5 hover:bg-neutral-500 rounded ${widget.visible === false ? "text-neutral-500" : "text-neutral-300 opacity-0 group-hover:opacity-100"}`}
@@ -275,7 +334,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
           {dropAfter && <div className="absolute left-1 right-1 h-0.5 bg-highlight-500 translate-y-2" />}
         </div>
         {hasChildren && expanded ? (
-          <div>{widget.children.map((child) => renderWidget(child, variant, root, depth + 1))}</div>
+          <div>{widget.children.map((child) => renderWidget(child, variant, root, depth + 1, sectionId, isCanonicalFrame))}</div>
         ) : null}
       </div>
     );
@@ -285,20 +344,63 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     <div className="flex-1 flex flex-col min-h-0">
       <div className="h-10 flex items-center justify-between px-3 border-b border-neutral-900">
         <span className="text-xs font-semibold text-neutral-300">HIERARCHY</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="p-1 rounded text-neutral-300 hover:bg-neutral-600 hover:text-neutral-100"
+            title="Add state"
+            aria-label="Add state"
+            onClick={addState}
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            type="button"
+            className="p-1 rounded text-neutral-300 hover:bg-neutral-600 hover:text-neutral-100"
+            title="Duplicate frame"
+            aria-label="Duplicate frame"
+            onClick={() => duplicateFrame()}
+          >
+            <Copy size={14} />
+          </button>
+          <button
+            type="button"
+            className="p-1 rounded text-neutral-300 hover:bg-neutral-600 hover:text-error-300 disabled:opacity-40"
+            title="Delete state"
+            aria-label="Delete state"
+            disabled={board.variantIds.length <= 1}
+            onClick={deleteState}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2 group">
-        {section ? (
-          <div className="mb-1">
-            <div className="flex items-center gap-1 rounded px-2 py-1 text-xs text-neutral-200">
+        {sectionGroups.map(({ variant, sectionId, frames }) => {
+          const section = project.sectionsById[sectionId];
+          return section ? (
+          <div key={section.id} className="mb-2">
+            <div
+              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-neutral-200"
+              onDragOver={(event) => {
+                if (dragging?.kind !== "widget") return;
+                event.preventDefault();
+                setDropTarget({ key: section.id, position: "inside" });
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (dragging?.kind === "widget") performWidgetMoveToSection(dragging.widgetId, section.id);
+                clearDrag();
+              }}
+            >
               <div className="w-5 flex items-center justify-center"><FolderOpen size={13} /></div>
               <span className="min-w-0 flex-1 truncate font-medium">{section.name}</span>
               <span className="text-[10px] text-neutral-400">Section</span>
             </div>
-            {screens.map(({ variant, root }) => renderWidget(root, variant, root, 1))}
+            {frames.map(({ root, isCanonicalFrame }) => renderWidget(root, variant, root, 1, sectionId, isCanonicalFrame))}
           </div>
-        ) : (
-          screens.map(({ variant, root }) => renderWidget(root, variant, root, 0))
-        )}
+          ) : null;
+        })}
       </div>
     </div>
   );

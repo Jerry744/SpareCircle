@@ -63,7 +63,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-export function EditorBackendProvider({ children }: { children: ReactNode }) {
+export function EditorBackendProvider({ children, autosave = true }: { children: ReactNode; autosave?: boolean }) {
   const clipboardRef = useRef<ClipboardPayload | null>(null);
   const [state, dispatch] = useReducer(editorReducer, undefined, () => ({
     project: createInitialProject(),
@@ -75,7 +75,7 @@ export function EditorBackendProvider({ children }: { children: ReactNode }) {
     interaction: null,
   }));
 
-  useProjectAutoSave(state.project, dispatch);
+  useProjectAutoSave(state.project, dispatch, autosave);
 
   const actions = useMemo(
     () => ({

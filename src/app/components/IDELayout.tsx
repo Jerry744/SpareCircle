@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TopToolbar, type EditorSurfaceMode } from "./TopToolbar";
 import { ScreensPanel } from "./ScreensPanel";
 import { HierarchyPanel } from "./HierarchyPanel";
@@ -25,8 +25,10 @@ import { ZoomRouterProvider, useZoomRouter } from "./zoomNavigator/useZoomRouter
 import { StateBoardShell, type StateBoardSelection } from "./stateBoard/StateBoardShell";
 import { parseProjectSnapshotV2 } from "../backend/validation";
 import { normalizeStateBoardSelection } from "./stateBoard/stateBoardSelection";
+import { loadActiveProjectFromIndexedDb, saveActiveProjectToIndexedDb } from "../backend/persistence";
 
 const STATE_PROJECT_STORAGE_KEY = "sparecircle:stateProject:v2";
+const V2_SAVE_DEBOUNCE_MS = 500;
 
 function createInitialNavMapProject(): ProjectSnapshotV2 {
   let project = createEmptyProjectV2({
@@ -96,6 +98,10 @@ function IDELayoutInner() {
     EMPTY_NAV_MAP_SELECTION,
   );
   const [stateBoardSelection, setStateBoardSelection] = useState<StateBoardSelection | null>(null);
+  const [v2History, setV2History] = useState<{ past: ProjectSnapshotV2[]; future: ProjectSnapshotV2[] }>({ past: [], future: [] });
+  const [isV2PersistenceReady, setIsV2PersistenceReady] = useState(false);
+  const saveTimerRef = useRef<number | null>(null);
+  const continuousHistoryOpenRef = useRef(false);
   const { current, zoomInto, goToMap, replaceVariant, rememberNavViewport, rememberNavSelection } =
     useZoomRouter();
   const surfaceMode: EditorSurfaceMode =
@@ -109,12 +115,75 @@ function IDELayoutInner() {
       ? stateBoardSelection ?? { kind: "screen", variantIds: [current.variantId] }
       : null;
 
-  const handleNavMapAction = (action: NavMapAction) => {
-    setNavMapProject((prev) => navigationMapReducer(prev, action));
-  };
-  const handleVariantAction = (action: VariantAction) => {
-    setNavMapProject((prev) => variantReducer(prev, action));
-  };
+  const commitV2Project = useCallback((update: (project: ProjectSnapshotV2) => ProjectSnapshotV2, options?: { historyMode?: "merge" }) => {
+    setNavMapProject((prev) => {
+      const next = update(prev);
+      if (next === prev || JSON.stringify(next) === JSON.stringify(prev)) return prev;
+      if (options?.historyMode === "merge") {
+        if (!continuousHistoryOpenRef.current) {
+          setV2History((history) => ({
+            past: [...history.past, cloneProjectV2(prev)],
+            future: [],
+          }));
+          continuousHistoryOpenRef.current = true;
+        }
+      } else {
+        continuousHistoryOpenRef.current = false;
+        setV2History((history) => ({
+          past: [...history.past, cloneProjectV2(prev)],
+          future: [],
+        }));
+      }
+      return next;
+    });
+  }, []);
+
+  const handleNavMapAction = useCallback((action: NavMapAction) => {
+    commitV2Project((prev) => navigationMapReducer(prev, action));
+  }, [commitV2Project]);
+  const handleVariantAction = useCallback((action: VariantAction) => {
+    const historyMode = "historyMode" in action ? action.historyMode : undefined;
+    commitV2Project((prev) => variantReducer(prev, action), { historyMode });
+  }, [commitV2Project]);
+  const endContinuousV2Change = useCallback(() => {
+    continuousHistoryOpenRef.current = false;
+  }, []);
+  const undoV2 = useCallback(() => {
+    setV2History((history) => {
+      if (history.past.length === 0) return history;
+      const previous = history.past[history.past.length - 1];
+      setNavMapProject((_currentProject) => {
+        const currentLevel = current;
+        if (currentLevel.level === "board" && !previous.variantsById[currentLevel.variantId]) {
+          const fallback = getCanonicalVariantId(previous, currentLevel.stateNodeId);
+          if (fallback) replaceVariant(fallback);
+        }
+        return cloneProjectV2(previous);
+      });
+      return {
+        past: history.past.slice(0, -1),
+        future: [cloneProjectV2(navMapProject), ...history.future],
+      };
+    });
+  }, [current, navMapProject, replaceVariant]);
+  const redoV2 = useCallback(() => {
+    setV2History((history) => {
+      if (history.future.length === 0) return history;
+      const [next, ...future] = history.future;
+      setNavMapProject((_currentProject) => {
+        const currentLevel = current;
+        if (currentLevel.level === "board" && !next.variantsById[currentLevel.variantId]) {
+          const fallback = getCanonicalVariantId(next, currentLevel.stateNodeId);
+          if (fallback) replaceVariant(fallback);
+        }
+        return cloneProjectV2(next);
+      });
+      return {
+        past: [...history.past, cloneProjectV2(navMapProject)],
+        future,
+      };
+    });
+  }, [current, navMapProject, replaceVariant]);
   const handleNavMapSelectionChange = (selection: NavMapSelection) => {
     setNavMapSelection(selection);
     rememberNavSelection(selection);
@@ -161,8 +230,46 @@ function IDELayoutInner() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const saved = await loadActiveProjectFromIndexedDb();
+        if (!saved || cancelled) return;
+        const parsed = parseProjectSnapshotV2(JSON.parse(saved.serializedProject));
+        if (parsed.ok) {
+          setNavMapProject(parsed.value);
+          setV2History({ past: [], future: [] });
+        }
+      } catch (error) {
+        console.warn("Failed to restore V2 project from IndexedDB", error);
+      } finally {
+        if (!cancelled) setIsV2PersistenceReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     window.localStorage.setItem(STATE_PROJECT_STORAGE_KEY, JSON.stringify(navMapProject));
-  }, [navMapProject]);
+    if (!isV2PersistenceReady) return;
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      void saveActiveProjectToIndexedDb(JSON.stringify(navMapProject)).catch((error) => {
+        console.warn("Failed to persist V2 project to IndexedDB", error);
+      });
+    }, V2_SAVE_DEBOUNCE_MS);
+    return () => {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [navMapProject, isV2PersistenceReady]);
 
   useEffect(() => {
     if (current.level !== "board" || !currentBoard) return;
@@ -199,6 +306,42 @@ function IDELayoutInner() {
       <TopToolbar
         surfaceMode={surfaceMode}
         onSurfaceModeChange={handleSurfaceModeChange}
+        undoState={{
+          canUndo: v2History.past.length > 0,
+          canRedo: v2History.future.length > 0,
+          onUndo: undoV2,
+          onRedo: redoV2,
+        }}
+        projectControls={{
+          projectName: navMapProject.projectName,
+          styleTokenCount: navMapProject.styleTokens.length,
+          pixelSnapEnabled: navMapProject.canvasSnap?.pixelSnapEnabled ?? false,
+          magnetSnapEnabled: navMapProject.canvasSnap?.magnetSnapEnabled ?? true,
+          serializeProject: () => JSON.stringify(navMapProject, null, 2),
+          hydrateProject: (serializedProject) => {
+            try {
+              const parsed = parseProjectSnapshotV2(JSON.parse(serializedProject));
+              if (!parsed.ok) return { ok: false, error: parsed.error };
+              setNavMapProject(parsed.value);
+              setV2History({ past: [], future: [] });
+              return { ok: true };
+            } catch {
+              return { ok: false, error: "Invalid JSON" };
+            }
+          },
+          setProjectName: (projectName) => {
+            commitV2Project((prev) => ({
+              ...prev,
+              projectName: projectName.trim() || prev.projectName,
+            }));
+          },
+          setCanvasSnapSettings: (settings) => {
+            commitV2Project((prev) => ({
+              ...prev,
+              canvasSnap: { ...prev.canvasSnap, ...settings },
+            }));
+          },
+        }}
       />
 
       <div className="flex-1 flex overflow-hidden relative">
@@ -292,6 +435,7 @@ function IDELayoutInner() {
                   onSelectionChange={setStateBoardSelection}
                   onReplaceVariant={replaceVariant}
                   onVariantAction={handleVariantAction}
+                  onEndContinuousChange={endContinuousV2Change}
                 />
               )}
               renderMapOverlay={() => (
@@ -383,7 +527,9 @@ function IDELayoutInner() {
 
 export function IDELayout() {
   return (
-    <EditorBackendProvider>
+    // Legacy provider remains only for panels that have not been migrated out
+    // of the old context shape; autosave is disabled so V2 is the persisted source.
+    <EditorBackendProvider autosave={false}>
       <LayoutProvider>
         <ZoomRouterProvider>
           <IDELayoutInner />
@@ -391,6 +537,11 @@ export function IDELayout() {
       </LayoutProvider>
     </EditorBackendProvider>
   );
+}
+
+function cloneProjectV2(project: ProjectSnapshotV2): ProjectSnapshotV2 {
+  if (typeof structuredClone === "function") return structuredClone(project);
+  return JSON.parse(JSON.stringify(project)) as ProjectSnapshotV2;
 }
 
 function getCanonicalVariantId(

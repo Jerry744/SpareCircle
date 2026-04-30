@@ -29,11 +29,29 @@ export type EditorSurfaceMode = "ui" | "navmap";
 interface TopToolbarProps {
   surfaceMode?: EditorSurfaceMode;
   onSurfaceModeChange?: (mode: EditorSurfaceMode) => void;
+  undoState?: {
+    canUndo: boolean;
+    canRedo: boolean;
+    onUndo(): void;
+    onRedo(): void;
+  };
+  projectControls?: {
+    projectName: string;
+    styleTokenCount: number;
+    pixelSnapEnabled: boolean;
+    magnetSnapEnabled: boolean;
+    serializeProject(): string;
+    hydrateProject(serializedProject: string): { ok: true; warning?: string } | { ok: false; error: string };
+    setProjectName(projectName: string): void;
+    setCanvasSnapSettings(settings: { pixelSnapEnabled?: boolean; magnetSnapEnabled?: boolean }): void;
+  };
 }
 
 export function TopToolbar({
   surfaceMode = "ui",
   onSurfaceModeChange,
+  undoState,
+  projectControls,
 }: TopToolbarProps = {}) {
   const [importError, setImportError] = useState<string | null>(null);
   const [importWarning, setImportWarning] = useState<string | null>(null);
@@ -52,17 +70,21 @@ export function TopToolbar({
 
   const layout = useLayout();
 
-  const pixelSnapEnabled = project.canvasSnap?.pixelSnapEnabled ?? false;
-  const magnetSnapEnabled = project.canvasSnap?.magnetSnapEnabled ?? true;
+  const projectName = projectControls?.projectName ?? project.projectName;
+  const styleTokenCount = projectControls?.styleTokenCount ?? project.styleTokens.length;
+  const pixelSnapEnabled = projectControls?.pixelSnapEnabled ?? project.canvasSnap?.pixelSnapEnabled ?? false;
+  const magnetSnapEnabled = projectControls?.magnetSnapEnabled ?? project.canvasSnap?.magnetSnapEnabled ?? true;
 
-  const canUndo = history.past.length > 0 && !interaction;
-  const canRedo = history.future.length > 0 && !interaction;
+  const canUndo = undoState?.canUndo ?? (history.past.length > 0 && !interaction);
+  const canRedo = undoState?.canRedo ?? (history.future.length > 0 && !interaction);
+  const undoAction = undoState?.onUndo ?? undo;
+  const redoAction = undoState?.onRedo ?? redo;
 
   useEffect(() => {
     if (!isEditingProjectName) {
-      setProjectNameInput(project.projectName);
+      setProjectNameInput(projectName);
     }
-  }, [project.projectName, isEditingProjectName]);
+  }, [projectName, isEditingProjectName]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -80,30 +102,30 @@ export function TopToolbar({
       if (key === "z" && !event.shiftKey) {
         event.preventDefault();
         if (canUndo) {
-          undo();
+          undoAction();
         }
       }
 
       if ((key === "y") || (key === "z" && event.shiftKey)) {
         event.preventDefault();
         if (canRedo) {
-          redo();
+          redoAction();
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canUndo, canRedo, undo, redo]);
+  }, [canUndo, canRedo, undoAction, redoAction]);
 
   const handleSave = () => {
-    const serialized = serializeProject();
+    const serialized = projectControls?.serializeProject() ?? serializeProject();
     const blob = new Blob([serialized], { type: "application/json" });
     const url = URL.createObjectURL(blob);
 
     const anchor = document.createElement("a");
     anchor.href = url;
-    const normalizedFileName = project.projectName.trim() || "sparecircle-project";
+    const normalizedFileName = projectName.trim() || "sparecircle-project";
     anchor.download = normalizedFileName.endsWith(".json") ? normalizedFileName : `${normalizedFileName}.json`;
     anchor.click();
 
@@ -115,7 +137,7 @@ export function TopToolbar({
 
   const commitProjectName = () => {
     const nextName = projectNameInput.trim();
-    setProjectName(nextName || project.projectName);
+    (projectControls?.setProjectName ?? setProjectName)(nextName || projectName);
     setIsEditingProjectName(false);
   };
 
@@ -125,7 +147,7 @@ export function TopToolbar({
       return;
     }
 
-    const result = hydrateProject(pasted);
+    const result = projectControls?.hydrateProject(pasted) ?? hydrateProject(pasted);
     if (!result.ok) {
       setImportError(result.error);
       setImportWarning(null);
@@ -172,7 +194,7 @@ export function TopToolbar({
               }
               if (event.key === "Escape") {
                 event.preventDefault();
-                setProjectNameInput(project.projectName);
+                setProjectNameInput(projectName);
                 setIsEditingProjectName(false);
               }
             }}
@@ -186,7 +208,7 @@ export function TopToolbar({
             className="text-sm text-neutral-300 hover:text-neutral-100 transition-colors"
             title="Rename project"
           >
-            {project.projectName}
+            {projectName}
           </button>
         )}
         <div className="h-6 w-px bg-neutral-600" />
@@ -238,14 +260,14 @@ export function TopToolbar({
       {/* Center Section - Main Actions */}
       <div className="flex items-center gap-2">
         <button
-          onClick={undo}
+          onClick={undoAction}
           disabled={!canUndo}
           className="px-3 py-1.5 hover:bg-neutral-600 rounded flex items-center gap-2 transition-colors text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Undo size={16} />
         </button>
         <button
-          onClick={redo}
+          onClick={redoAction}
           disabled={!canRedo}
           className="px-3 py-1.5 hover:bg-neutral-600 rounded flex items-center gap-2 transition-colors text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -257,7 +279,7 @@ export function TopToolbar({
           <span className="text-sm">Grid</span>
         </button>
         <button
-          onClick={() => setCanvasSnapSettings({ pixelSnapEnabled: !pixelSnapEnabled })}
+          onClick={() => (projectControls?.setCanvasSnapSettings ?? setCanvasSnapSettings)({ pixelSnapEnabled: !pixelSnapEnabled })}
           title="Pixel Snap"
           aria-label="Pixel Snap"
           aria-pressed={pixelSnapEnabled}
@@ -267,7 +289,7 @@ export function TopToolbar({
           <span className="text-sm">Pixel</span>
         </button>
         <button
-          onClick={() => setCanvasSnapSettings({ magnetSnapEnabled: !magnetSnapEnabled })}
+          onClick={() => (projectControls?.setCanvasSnapSettings ?? setCanvasSnapSettings)({ magnetSnapEnabled: !magnetSnapEnabled })}
           title="Magnet Snap"
           aria-label="Magnet Snap"
           aria-pressed={magnetSnapEnabled}
@@ -281,7 +303,7 @@ export function TopToolbar({
           className="px-3 py-1.5 hover:bg-neutral-600 rounded flex items-center gap-2 transition-colors text-neutral-200"
         >
           <Palette size={16} />
-          <span className="text-sm">Style Tokens ({project.styleTokens.length})</span>
+          <span className="text-sm">Style Tokens ({styleTokenCount})</span>
         </button>
         <button className="px-3 py-1.5 hover:bg-neutral-600 rounded flex items-center gap-2 transition-colors text-neutral-200">
           <Maximize2 size={16} />

@@ -23,6 +23,9 @@ interface StateBoardContextMenuContentProps {
   onSetWidgetVisible(widgetIds: string[], visible: boolean): void;
   onMoveWidget(widgetId: string, parentId: string, index: number): void;
   onSetCanonical(variantId: string): void;
+  onCopyWidgets(widgetIds: string[]): void;
+  onPasteWidgets(): void;
+  onDeleteWidgets(widgetIds: string[]): void;
 }
 
 export function StateBoardContextMenuContent({
@@ -32,6 +35,9 @@ export function StateBoardContextMenuContent({
   onSetWidgetVisible,
   onMoveWidget,
   onSetCanonical,
+  onCopyWidgets,
+  onPasteWidgets,
+  onDeleteWidgets,
 }: StateBoardContextMenuContentProps): JSX.Element {
   const menuClassName = "min-w-52 rounded-lg border border-neutral-600 bg-neutral-800 p-1.5 text-neutral-100 shadow-2xl";
   const itemClassName = "rounded-md text-sm text-neutral-200 focus:bg-highlight-900 focus:text-neutral-100 data-[disabled]:text-neutral-500";
@@ -53,6 +59,10 @@ export function StateBoardContextMenuContent({
         </ContextMenuItem>
         <ContextMenuItem className={itemClassName} onSelect={() => onAddWidget(data.dropParentId!, "Container", data.dropLocalX!, data.dropLocalY!)}>
           New Container
+        </ContextMenuItem>
+        <ContextMenuSeparator className={separatorClassName} />
+        <ContextMenuItem className={itemClassName} onSelect={onPasteWidgets}>
+          Paste
         </ContextMenuItem>
       </ContextMenuContent>
     );
@@ -98,6 +108,26 @@ export function StateBoardContextMenuContent({
         }}
       >
         {visibilityLabel}
+      </ContextMenuItem>
+      <ContextMenuItem
+        className={itemClassName}
+        disabled={widgetIds.length === 0}
+        onSelect={() => onCopyWidgets(widgetIds)}
+      >
+        Copy
+      </ContextMenuItem>
+      <ContextMenuItem
+        className={itemClassName}
+        onSelect={onPasteWidgets}
+      >
+        Paste
+      </ContextMenuItem>
+      <ContextMenuItem
+        className={itemClassName}
+        disabled={widgetIds.length === 0}
+        onSelect={() => onDeleteWidgets(widgetIds)}
+      >
+        Delete
       </ContextMenuItem>
       <ContextMenuSeparator className={separatorClassName} />
       <ContextMenuItem

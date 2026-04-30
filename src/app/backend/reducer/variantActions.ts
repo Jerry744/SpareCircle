@@ -29,7 +29,8 @@ export type VariantAction =
   | { type: "setVariantStatus"; variantId: string; status: VariantStatus; now?: string }
   | { type: "reorderVariants"; boardId: string; orderedIds: string[] }
   | { type: "deleteVariant"; variantId: string }
-  | { type: "moveVariantScreen"; variantId: string; position: { x: number; y: number }; now?: string }
+  | { type: "moveVariantScreen"; variantId: string; position: { x: number; y: number }; now?: string; historyMode?: "merge" }
+  | { type: "duplicateSectionFrame"; sectionId: string; frameId: string; newFrameId?: string; offset?: { x: number; y: number }; now?: string }
   | {
       type: "insertVariantWidget";
       variantId: string;
@@ -40,6 +41,17 @@ export type VariantAction =
       now?: string;
     }
   | { type: "moveVariantWidget"; widgetId: string; targetParentId: string; targetIndex: number; now?: string }
-  | { type: "setVariantWidgetPositions"; positions: Record<string, { x: number; y: number }>; now?: string }
+  | { type: "deleteVariantWidgets"; widgetIds: string[]; now?: string }
+  | {
+      type: "duplicateVariantWidgets";
+      variantId: string;
+      widgetIds: string[];
+      targetParentId?: string;
+      targetIndex?: number;
+      offset?: { x: number; y: number };
+      rootWidgetIds?: string[];
+      now?: string;
+    }
+  | { type: "setVariantWidgetPositions"; positions: Record<string, { x: number; y: number }>; now?: string; historyMode?: "merge" }
   | { type: "setVariantWidgetVisibility"; widgetId: string; visible: boolean; now?: string }
   | { type: "setBoardResolution"; boardId: string; width: number; height: number; now?: string };

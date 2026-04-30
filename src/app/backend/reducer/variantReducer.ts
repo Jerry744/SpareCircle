@@ -58,7 +58,79 @@ function findVariantIdForWidget(project: ProjectSnapshotV2, widgetId: string): s
   for (const variant of Object.values(project.variantsById)) {
     if (collectWidgetSubtreeIds(project.widgetsById, variant.rootWidgetId).has(widgetId)) return variant.id;
   }
+  for (const section of Object.values(project.sectionsById)) {
+    for (const draftNodeId of section.draftNodeIds) {
+      if (collectWidgetSubtreeIds(project.widgetsById, draftNodeId).has(widgetId)) return section.stateId;
+    }
+  }
   return null;
+}
+
+function findSectionIdForRoot(project: ProjectSnapshotV2, rootWidgetId: string): string | null {
+  for (const section of Object.values(project.sectionsById)) {
+    if (section.draftNodeIds.includes(rootWidgetId)) return section.id;
+  }
+  return null;
+}
+
+function rewriteClonedBindings(widget: WidgetNode, idMap: Map<string, string>): WidgetNode {
+  if (!widget.eventBindings) return widget;
+  const eventBindings: WidgetNode["eventBindings"] = {};
+  for (const [event, binding] of Object.entries(widget.eventBindings)) {
+    if (!binding) continue;
+    if (binding.action.type === "toggle_visibility") {
+      eventBindings[event as keyof WidgetNode["eventBindings"]] = {
+        ...binding,
+        action: {
+          ...binding.action,
+          targetWidgetId: idMap.get(binding.action.targetWidgetId) ?? binding.action.targetWidgetId,
+        },
+      };
+    }
+  }
+  return Object.keys(eventBindings).length > 0 ? { ...widget, eventBindings } : { ...widget, eventBindings: undefined };
+}
+
+function makeCloneWidgetId(used: Set<string>, sourceId: string, override?: string): string {
+  if (override && !used.has(override)) {
+    used.add(override);
+    return override;
+  }
+  const base = sourceId.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "") || "widget";
+  let index = 1;
+  while (used.has(`${base}-${index}`)) index += 1;
+  const id = `${base}-${index}`;
+  used.add(id);
+  return id;
+}
+
+function filterTopLevelWidgetIds(project: ProjectSnapshotV2, widgetIds: string[]): string[] {
+  const selected = new Set(widgetIds);
+  return widgetIds.filter((id) => {
+    let parentId = project.widgetsById[id]?.parentId ?? null;
+    while (parentId) {
+      if (selected.has(parentId)) return false;
+      parentId = project.widgetsById[parentId]?.parentId ?? null;
+    }
+    return true;
+  });
+}
+
+function removeWidgetSubtrees(
+  widgetsById: Record<string, WidgetNode>,
+  rootIds: string[],
+): { widgetsById: Record<string, WidgetNode>; deletedIds: Set<string> } {
+  const deletedIds = new Set<string>();
+  for (const rootId of rootIds) {
+    for (const id of collectWidgetSubtreeIds(widgetsById, rootId)) deletedIds.add(id);
+  }
+  const nextWidgetsById: Record<string, WidgetNode> = {};
+  for (const [id, widget] of Object.entries(widgetsById)) {
+    if (deletedIds.has(id)) continue;
+    const childrenIds = widget.childrenIds.filter((childId) => !deletedIds.has(childId));
+    nextWidgetsById[id] = childrenIds.length === widget.childrenIds.length ? widget : { ...widget, childrenIds };
+  }
+  return { widgetsById: nextWidgetsById, deletedIds };
 }
 
 function makeRootFromMeta(id: string, name: string, width: number, height: number): WidgetNode {
@@ -270,47 +342,192 @@ export function handleMoveVariantWidget(
   action: Extract<VariantAction, { type: "moveVariantWidget" }>,
 ): ProjectSnapshotV2 {
   const widget = project.widgetsById[action.widgetId];
+  const targetSection = project.sectionsById[action.targetParentId];
   const targetParent = project.widgetsById[action.targetParentId];
-  if (!widget || !targetParent || !widget.parentId || !CONTAINER_WIDGET_TYPES.has(targetParent.type)) return project;
+  if (!widget || (!targetParent && !targetSection)) return project;
+  if (targetParent && !CONTAINER_WIDGET_TYPES.has(targetParent.type)) return project;
 
   const owningVariantId = findVariantIdForWidget(project, widget.id);
-  const targetVariantId = findVariantIdForWidget(project, targetParent.id);
+  const targetVariantId = targetSection?.stateId ?? (targetParent ? findVariantIdForWidget(project, targetParent.id) : null);
   if (!owningVariantId || !targetVariantId) return project;
 
   const owningVariant = project.variantsById[owningVariantId];
+  const targetVariant = project.variantsById[targetVariantId];
+  if (!owningVariant || !targetVariant || owningVariant.boardId !== targetVariant.boardId) return project;
   if (widget.id === owningVariant.rootWidgetId) return project;
 
-  const sourceParent = project.widgetsById[widget.parentId];
-  if (!sourceParent) return project;
+  const sourceParent = widget.parentId ? project.widgetsById[widget.parentId] : null;
+  const sourceSectionId = widget.parentId ? null : findSectionIdForRoot(project, widget.id);
+  if (!sourceParent && !sourceSectionId) return project;
 
   const descendants = collectWidgetSubtreeIds(project.widgetsById, widget.id);
-  if (descendants.has(targetParent.id)) return project;
+  if (targetParent && descendants.has(targetParent.id)) return project;
 
-  const sourceIndex = sourceParent.childrenIds.indexOf(widget.id);
+  const sourceSection = sourceSectionId ? project.sectionsById[sourceSectionId] : null;
+  const sourceSiblings = sourceParent?.childrenIds ?? sourceSection?.draftNodeIds ?? [];
+  const sourceIndex = sourceSiblings.indexOf(widget.id);
   if (sourceIndex < 0) return project;
 
-  const normalizedTargetIndex = Math.max(0, Math.min(action.targetIndex, targetParent.childrenIds.length));
-  const sameParent = sourceParent.id === targetParent.id;
+  const targetSiblings = targetParent?.childrenIds ?? targetSection?.draftNodeIds ?? [];
+  const normalizedTargetIndex = Math.max(0, Math.min(action.targetIndex, targetSiblings.length));
+  const sameParent = (sourceParent?.id ?? sourceSectionId) === (targetParent?.id ?? targetSection?.id);
   const adjustedTargetIndex = sameParent && sourceIndex < normalizedTargetIndex
     ? normalizedTargetIndex - 1
     : normalizedTargetIndex;
   if (sameParent && sourceIndex === adjustedTargetIndex) return project;
 
-  const nextSourceChildren = [...sourceParent.childrenIds];
+  const nextSourceChildren = [...sourceSiblings];
   nextSourceChildren.splice(sourceIndex, 1);
-  const nextTargetChildren = sameParent ? nextSourceChildren : [...targetParent.childrenIds];
+  const nextTargetChildren = sameParent ? nextSourceChildren : [...targetSiblings];
   nextTargetChildren.splice(adjustedTargetIndex, 0, widget.id);
 
+  const widgetsById = { ...project.widgetsById };
+  if (sourceParent) widgetsById[sourceParent.id] = { ...sourceParent, childrenIds: sameParent ? nextTargetChildren : nextSourceChildren };
+  if (targetParent) widgetsById[targetParent.id] = { ...targetParent, childrenIds: nextTargetChildren };
+  widgetsById[widget.id] = { ...widget, parentId: targetParent?.id ?? null };
+
+  const sectionsById = { ...project.sectionsById };
+  if (sourceSection && !sameParent) sectionsById[sourceSection.id] = { ...sourceSection, draftNodeIds: nextSourceChildren };
+  if (targetSection) sectionsById[targetSection.id] = { ...targetSection, draftNodeIds: nextTargetChildren };
+
+  const next: ProjectSnapshotV2 = {
+    ...project,
+    sectionsById,
+    widgetsById,
+  };
+  return touchVariant(touchVariant(next, owningVariantId, action.now), targetVariantId, action.now);
+}
+
+export function handleDuplicateSectionFrame(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "duplicateSectionFrame" }>,
+): ProjectSnapshotV2 {
+  const section = project.sectionsById[action.sectionId];
+  const variant = section ? project.variantsById[section.stateId] : undefined;
+  const sourceRoot = project.widgetsById[action.frameId];
+  if (!section || !variant || !sourceRoot || sourceRoot.type !== "Screen") return project;
+  const sourceIds = [...collectWidgetSubtreeIds(project.widgetsById, sourceRoot.id)];
+  const used = new Set(Object.keys(project.widgetsById));
+  const idMap = new Map<string, string>();
+  idMap.set(sourceRoot.id, makeCloneWidgetId(used, sourceRoot.id, action.newFrameId));
+  for (const sourceId of sourceIds) {
+    if (!idMap.has(sourceId)) idMap.set(sourceId, makeCloneWidgetId(used, sourceId));
+  }
+
+  const offset = action.offset ?? { x: 40, y: 40 };
+  const newWidgets: Record<string, WidgetNode> = {};
+  for (const sourceId of sourceIds) {
+    const source = project.widgetsById[sourceId];
+    const newId = idMap.get(sourceId);
+    if (!source || !newId) continue;
+    const isRoot = sourceId === sourceRoot.id;
+    const cloned: WidgetNode = {
+      ...source,
+      id: newId,
+      parentId: isRoot ? null : source.parentId ? idMap.get(source.parentId) ?? null : null,
+      childrenIds: source.childrenIds.map((childId) => idMap.get(childId)).filter((id): id is string => Boolean(id)),
+      x: isRoot ? source.x + offset.x : source.x,
+      y: isRoot ? source.y + offset.y : source.y,
+    };
+    newWidgets[newId] = rewriteClonedBindings(cloned, idMap);
+  }
+  const newFrameId = idMap.get(sourceRoot.id);
+  if (!newFrameId) return project;
+  const next: ProjectSnapshotV2 = {
+    ...project,
+    sectionsById: {
+      ...project.sectionsById,
+      [section.id]: { ...section, draftNodeIds: [...section.draftNodeIds, newFrameId] },
+    },
+    widgetsById: { ...project.widgetsById, ...newWidgets },
+  };
+  return touchVariant(next, variant.id, action.now);
+}
+
+export function handleDeleteVariantWidgets(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "deleteVariantWidgets" }>,
+): ProjectSnapshotV2 {
+  const variantRootIds = new Set(Object.values(project.variantsById).map((variant) => variant.rootWidgetId));
+  const roots = filterTopLevelWidgetIds(project, action.widgetIds)
+    .filter((widgetId) => Boolean(project.widgetsById[widgetId]) && !variantRootIds.has(widgetId));
+  if (roots.length === 0) return project;
+
+  const touchedVariantIds = new Set<string>();
+  for (const rootId of roots) {
+    const variantId = findVariantIdForWidget(project, rootId);
+    if (variantId) touchedVariantIds.add(variantId);
+  }
+
+  const { widgetsById, deletedIds } = removeWidgetSubtrees(project.widgetsById, roots);
+  const sectionsById = { ...project.sectionsById };
+  for (const section of Object.values(project.sectionsById)) {
+    const draftNodeIds = section.draftNodeIds.filter((nodeId) => !deletedIds.has(nodeId));
+    if (draftNodeIds.length !== section.draftNodeIds.length) {
+      sectionsById[section.id] = { ...section, draftNodeIds };
+      touchedVariantIds.add(section.stateId);
+    }
+  }
+
+  let next: ProjectSnapshotV2 = { ...project, sectionsById, widgetsById };
+  for (const variantId of touchedVariantIds) next = touchVariant(next, variantId, action.now);
+  return next;
+}
+
+export function handleDuplicateVariantWidgets(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "duplicateVariantWidgets" }>,
+): ProjectSnapshotV2 {
+  const variant = project.variantsById[action.variantId];
+  if (!variant) return project;
+  const variantWidgetIds = collectWidgetSubtreeIds(project.widgetsById, variant.rootWidgetId);
+  const roots = filterTopLevelWidgetIds(project, action.widgetIds)
+    .filter((widgetId) => variantWidgetIds.has(widgetId) && widgetId !== variant.rootWidgetId);
+  if (roots.length === 0) return project;
+
+  const targetParentId = action.targetParentId ?? project.widgetsById[roots[0]]?.parentId ?? variant.rootWidgetId;
+  const targetParent = project.widgetsById[targetParentId];
+  if (!targetParent || !variantWidgetIds.has(targetParent.id) || !CONTAINER_WIDGET_TYPES.has(targetParent.type)) return project;
+
+  const sourceIds = roots.flatMap((rootId) => [...collectWidgetSubtreeIds(project.widgetsById, rootId)]);
+  const used = new Set(Object.keys(project.widgetsById));
+  const idMap = new Map<string, string>();
+  roots.forEach((rootId, index) => {
+    idMap.set(rootId, makeCloneWidgetId(used, rootId, action.rootWidgetIds?.[index]));
+  });
+  for (const sourceId of sourceIds) {
+    if (!idMap.has(sourceId)) idMap.set(sourceId, makeCloneWidgetId(used, sourceId));
+  }
+
+  const newWidgets: Record<string, WidgetNode> = {};
+  const offset = action.offset ?? { x: 16, y: 16 };
+  for (const sourceId of sourceIds) {
+    const source = project.widgetsById[sourceId];
+    const newId = idMap.get(sourceId);
+    if (!source || !newId) continue;
+    const isRoot = roots.includes(sourceId);
+    newWidgets[newId] = {
+      ...source,
+      id: newId,
+      parentId: isRoot ? targetParent.id : source.parentId ? idMap.get(source.parentId) ?? targetParent.id : targetParent.id,
+      childrenIds: source.childrenIds.map((childId) => idMap.get(childId)).filter((id): id is string => Boolean(id)),
+      x: isRoot ? source.x + offset.x : source.x,
+      y: isRoot ? source.y + offset.y : source.y,
+    };
+  }
+
+  const newRootIds = roots.map((rootId) => idMap.get(rootId)).filter((id): id is string => Boolean(id));
+  const nextChildrenIds = [...targetParent.childrenIds];
+  nextChildrenIds.splice(action.targetIndex ?? nextChildrenIds.length, 0, ...newRootIds);
   const next: ProjectSnapshotV2 = {
     ...project,
     widgetsById: {
       ...project.widgetsById,
-      [sourceParent.id]: { ...sourceParent, childrenIds: sameParent ? nextTargetChildren : nextSourceChildren },
-      [targetParent.id]: { ...targetParent, childrenIds: nextTargetChildren },
-      [widget.id]: { ...widget, parentId: targetParent.id },
+      ...newWidgets,
+      [targetParent.id]: { ...targetParent, childrenIds: nextChildrenIds },
     },
   };
-  return touchVariant(touchVariant(next, owningVariantId, action.now), targetVariantId, action.now);
+  return touchVariant(next, variant.id, action.now);
 }
 
 export function handleSetVariantWidgetPositions(
@@ -326,7 +543,7 @@ export function handleSetVariantWidgetPositions(
 
   for (const [widgetId, position] of entries) {
     const widget = nextWidgetsById[widgetId];
-    if (!widget || !widget.parentId) return project;
+    if (!widget) return project;
 
     const variantId = findVariantIdForWidget(project, widgetId);
     if (!variantId) return project;
@@ -405,7 +622,7 @@ function handleCreateSection(
   project: ProjectSnapshotV2,
   action: Extract<VariantAction, { type: "createSection" }>,
 ): ProjectSnapshotV2 {
-  if (!project.navigationMap.stateNodes[action.stateId]) return project;
+  if (!project.variantsById[action.stateId]) return project;
   const synced = syncSectionIndexes(project);
   const sectionId = synced.sectionIdByStateId[action.stateId];
   if (!action.name?.trim() || !sectionId) return synced;
@@ -435,13 +652,10 @@ function handleBindCanonicalFrame(
 ): ProjectSnapshotV2 {
   const section = project.sectionsById[action.sectionId];
   if (!section) return project;
-  const stateNode = project.navigationMap.stateNodes[section.stateId];
-  const board = stateNode ? project.stateBoardsById[stateNode.boardId] : undefined;
+  const variant = project.variantsById[section.stateId];
+  if (!variant || variant.rootWidgetId !== action.canonicalFrameId) return project;
+  const board = project.stateBoardsById[variant.boardId];
   if (!board) return project;
-  const variant = board.variantIds
-    .map((variantId) => project.variantsById[variantId])
-    .find((item) => item?.rootWidgetId === action.canonicalFrameId);
-  if (!variant) return project;
   return syncSectionIndexes(handleSetCanonicalVariant(project, {
     type: "setCanonicalVariant",
     boardId: board.id,
@@ -466,11 +680,14 @@ export function variantReducer(project: ProjectSnapshotV2, action: VariantAction
     case "unbindCanonicalFrame": return project.sectionsById[action.sectionId] ? project : project;
     case "mapStateSection": return action.sectionId === makeSectionId(action.stateId) ? syncSectionIndexes(project) : project;
     case "setVariantStatus": return syncIfChanged(project, handleSetVariantStatus(project, action));
-    case "reorderVariants": return handleReorderVariants(project, action);
+    case "reorderVariants": return syncIfChanged(project, handleReorderVariants(project, action));
     case "deleteVariant": return syncIfChanged(project, handleDeleteVariant(project, action));
     case "moveVariantScreen": return handleMoveVariantScreen(project, action);
+    case "duplicateSectionFrame": return syncIfChanged(project, handleDuplicateSectionFrame(project, action));
     case "insertVariantWidget": return handleInsertVariantWidget(project, action);
-    case "moveVariantWidget": return handleMoveVariantWidget(project, action);
+    case "moveVariantWidget": return syncIfChanged(project, handleMoveVariantWidget(project, action));
+    case "deleteVariantWidgets": return syncIfChanged(project, handleDeleteVariantWidgets(project, action));
+    case "duplicateVariantWidgets": return handleDuplicateVariantWidgets(project, action);
     case "setVariantWidgetPositions": return handleSetVariantWidgetPositions(project, action);
     case "setVariantWidgetVisibility": return handleSetVariantWidgetVisibility(project, action);
     case "setBoardResolution": return syncIfChanged(project, handleSetBoardResolution(project, action));

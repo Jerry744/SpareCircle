@@ -18,6 +18,7 @@ export interface StateBoardShellProps {
   onSelectionChange(selection: StateBoardSelection): void;
   onReplaceVariant(variantId: string): void;
   onVariantAction(action: VariantAction): void;
+  onEndContinuousChange?(): void;
 }
 
 export function StateBoardShell({
@@ -30,6 +31,7 @@ export function StateBoardShell({
   onSelectionChange,
   onReplaceVariant,
   onVariantAction,
+  onEndContinuousChange,
 }: StateBoardShellProps): JSX.Element {
   const resolved = resolveBoardView(project, stateNodeId, variantId);
   if (!resolved) {
@@ -55,6 +57,7 @@ export function StateBoardShell({
           onSelectionChange={onSelectionChange}
           onSelectVariant={onReplaceVariant}
           onVariantAction={onVariantAction}
+          onEndContinuousChange={onEndContinuousChange}
         />
       </div>
     </section>

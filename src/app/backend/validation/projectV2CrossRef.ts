@@ -99,7 +99,7 @@ function checkVariantBoardLink(input: ProjectV2CrossRefInput): CrossRefResult {
 
 // INV-4: each Variant's rootWidgetId must be a Screen widget with no parent.
 function checkVariantRootWidget(input: ProjectV2CrossRefInput): CrossRefResult {
-  const { variantsById, widgetsById } = input;
+  const { stateBoardsById, variantsById, widgetsById } = input;
   const rootsSeen = new Map<string, string>();
   for (const variant of Object.values(variantsById)) {
     const widget = widgetsById[variant.rootWidgetId];
@@ -111,6 +111,10 @@ function checkVariantRootWidget(input: ProjectV2CrossRefInput): CrossRefResult {
     }
     if (widget.parentId !== null) {
       return fail(`Variant "${variant.id}" root widget "${widget.id}" must have parentId === null`);
+    }
+    const board = stateBoardsById[variant.boardId];
+    if (board && (widget.width !== board.meta.width || widget.height !== board.meta.height)) {
+      return fail(`Variant "${variant.id}" root widget "${widget.id}" must match StateBoard resolution`);
     }
     const previousOwner = rootsSeen.get(widget.id);
     if (previousOwner) {
@@ -152,40 +156,46 @@ function checkSections(input: ProjectV2CrossRefInput): CrossRefResult {
   const seenSections = new Set<string>();
   const sectionOrderMembership = new Set(Object.values(sectionOrderByScreenId).flat());
 
-  for (const stateNode of Object.values(navigationMap.stateNodes)) {
-    const sectionId = sectionIdByStateId[stateNode.id];
+  for (const board of Object.values(stateBoardsById)) {
+    const stateNode = navigationMap.stateNodes[board.stateNodeId];
+    if (!stateNode) continue;
+    for (const variantId of board.variantIds) {
+      const variant = variantsById[variantId];
+      if (!variant) continue;
+      const sectionId = sectionIdByStateId[variant.id];
     const section = sectionId ? sectionsById[sectionId] : undefined;
-    if (!section) return fail(`StateNode "${stateNode.id}" must map to exactly one Section`);
+      if (!section) return fail(`Variant "${variant.id}" must map to exactly one Section`);
     if (seenSections.has(section.id)) return fail(`Section "${section.id}" is mapped from more than one StateNode`);
     seenSections.add(section.id);
-    if (section.stateId !== stateNode.id) return fail(`Section "${section.id}".stateId must equal "${stateNode.id}"`);
+      if (section.stateId !== variant.id) return fail(`Section "${section.id}".stateId must equal "${variant.id}"`);
     if (!sectionOrderMembership.has(section.id)) return fail(`Section "${section.id}" must be present in sectionOrderByScreenId`);
 
-    const board = stateBoardsById[stateNode.boardId];
-    if (!board) continue;
-    const canonicalVariant = variantsById[board.canonicalVariantId];
-    if (!canonicalVariant) continue;
-    if (section.canonicalFrameId !== canonicalVariant.rootWidgetId) {
-      return fail(`Section "${section.id}".canonicalFrameId must equal the owning board canonical frame`);
+      if (section.canonicalFrameId !== variant.rootWidgetId) {
+        return fail(`Section "${section.id}".canonicalFrameId must equal its Variant root frame`);
     }
-    const variantRootIds = board.variantIds.map((variantId) => variantsById[variantId]?.rootWidgetId).filter(Boolean);
-    const expectedDrafts = variantRootIds.filter((rootWidgetId) => rootWidgetId !== section.canonicalFrameId).sort();
-    if (JSON.stringify([...section.draftNodeIds].sort()) !== JSON.stringify(expectedDrafts)) {
-      return fail(`Section "${section.id}".draftNodeIds must match non-canonical frame roots`);
-    }
-    for (const rootWidgetId of variantRootIds) {
-      if (screenIdByRootWidgetId[rootWidgetId] !== section.screenId) {
-        return fail(`Frame root "${rootWidgetId}" must belong to Section "${section.id}" screen tree`);
+      for (const draftNodeId of section.draftNodeIds) {
+        const draftNode = input.widgetsById[draftNodeId];
+        if (!draftNode) return fail(`Section "${section.id}".draftNodeIds references missing widget "${draftNodeId}"`);
+        if (draftNode.parentId !== null) return fail(`Section "${section.id}".draftNodeIds widget "${draftNodeId}" must have parentId === null`);
+        if (draftNode.type === "Screen" && (draftNode.width !== board.meta.width || draftNode.height !== board.meta.height)) {
+          return fail(`Section "${section.id}" draft frame "${draftNodeId}" must match StateBoard resolution`);
+        }
       }
-      if (!screenTreeByScreenId[section.screenId]?.rootWidgetIds.includes(rootWidgetId)) {
-        return fail(`screenTreeByScreenId["${section.screenId}"] must include frame root "${rootWidgetId}"`);
+      const frameRootIds = [variant.rootWidgetId, ...section.draftNodeIds.filter((nodeId) => input.widgetsById[nodeId]?.type === "Screen")];
+      for (const rootWidgetId of frameRootIds) {
+        if (screenIdByRootWidgetId[rootWidgetId] !== section.screenId) {
+          return fail(`Frame root "${rootWidgetId}" must belong to Section "${section.id}" screen tree`);
+        }
+        if (!screenTreeByScreenId[section.screenId]?.rootWidgetIds.includes(rootWidgetId)) {
+          return fail(`screenTreeByScreenId["${section.screenId}"] must include frame root "${rootWidgetId}"`);
+        }
       }
     }
   }
 
   for (const section of Object.values(sectionsById)) {
-    if (!navigationMap.stateNodes[section.stateId]) {
-      return fail(`Section "${section.id}" points to unknown StateNode "${section.stateId}"`);
+    if (!variantsById[section.stateId]) {
+      return fail(`Section "${section.id}" points to unknown Variant "${section.stateId}"`);
     }
   }
   return { ok: true };

@@ -144,7 +144,7 @@ function parseSection(input: unknown, path: string): ParseResult<Section> {
   const { id, screenId, stateId, name, canonicalFrameId, order } = input;
   if (typeof id !== "string" || !id.startsWith("section-")) return parseFail(`${path}.id must start with "section-"`);
   if (typeof screenId !== "string" || !screenId.trim()) return parseFail(`${path}.screenId must be a non-empty string`);
-  if (typeof stateId !== "string" || !stateId.startsWith("state-node-")) return parseFail(`${path}.stateId must start with "state-node-"`);
+  if (typeof stateId !== "string" || !stateId.startsWith("variant-")) return parseFail(`${path}.stateId must start with "variant-"`);
   if (typeof name !== "string" || !name.trim()) return parseFail(`${path}.name must be a non-empty string`);
   if (typeof canonicalFrameId !== "string" || !canonicalFrameId.trim()) {
     return parseFail(`${path}.canonicalFrameId must be a non-empty string`);
@@ -209,9 +209,12 @@ function applyAndValidateSectionIndexes(
   core: ProjectSnapshotCore,
   path: string,
 ): ParseResult<ProjectSnapshotCore> {
-  const derived = syncSectionIndexes(core);
+  let derived = syncSectionIndexes(core);
 
   if (input.sectionsById !== undefined) {
+    const rawSections = isRecord(input.sectionsById) ? Object.values(input.sectionsById) : [];
+    const isLegacyStateNodeSections = rawSections.some((raw) => isRecord(raw) && typeof raw.stateId === "string" && raw.stateId.startsWith("state-node-"));
+    if (isLegacyStateNodeSections) return parseOk(derived);
     const sectionsResult = parseRecord<Section>(
       input.sectionsById,
       `${path}.sectionsById`,
@@ -219,6 +222,7 @@ function applyAndValidateSectionIndexes(
       (section) => section.id,
     );
     if (!sectionsResult.ok) return sectionsResult;
+    derived = syncSectionIndexes({ ...core, sectionsById: sectionsResult.value });
     const expectedById = derived.sectionsById;
     const actualComparable = Object.fromEntries(
       Object.entries(sectionsResult.value).map(([id, section]) => [

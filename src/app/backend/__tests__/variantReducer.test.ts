@@ -81,8 +81,9 @@ describe("variantReducer", () => {
     expect(blank.stateBoardsById[boardId].variantIds).toContain("variant-blank");
     expect(blank.variantsById["variant-blank"].status).toBe("draft");
     expect(blank.stateBoardsById[boardId].canonicalVariantId).toBe("variant-root");
-    expect(blank.sectionsById["section-alpha"].canonicalFrameId).toBe("screen-root");
-    expect(blank.sectionsById["section-alpha"].draftNodeIds).toEqual(["blank-root"]);
+    expect(blank.sectionsById["section-root"].canonicalFrameId).toBe("screen-root");
+    expect(blank.sectionsById["section-blank"].canonicalFrameId).toBe("blank-root");
+    expect(blank.sectionsById["section-blank"].draftNodeIds).toEqual([]);
 
     const copied = variantReducer(blank, {
       type: "duplicateVariant",
@@ -92,11 +93,11 @@ describe("variantReducer", () => {
       now: NOW,
     });
     expect(copied.variantsById["variant-copy"].rootWidgetId).not.toBe("screen-root");
-    expect(copied.sectionsById["section-alpha"].draftNodeIds).toContain(copied.variantsById["variant-copy"].rootWidgetId);
+    expect(copied.sectionsById["section-copy"].canonicalFrameId).toBe(copied.variantsById["variant-copy"].rootWidgetId);
     expect(parseProjectSnapshotV2(copied).ok).toBe(true);
   });
 
-  it("binds one canonical frame per section and rejects cross-section frames", () => {
+  it("keeps one section per board state and can mark that state canonical", () => {
     const project = variantReducer(makeFixture(), {
       type: "createVariant",
       boardId: "board-alpha",
@@ -108,17 +109,17 @@ describe("variantReducer", () => {
     });
     const rebound = variantReducer(project, {
       type: "bindCanonicalFrame",
-      sectionId: "section-alpha",
+      sectionId: "section-draft",
       canonicalFrameId: "draft-root",
       now: NOW,
     });
     expect(rebound.stateBoardsById["board-alpha"].canonicalVariantId).toBe("variant-draft");
-    expect(rebound.sectionsById["section-alpha"].canonicalFrameId).toBe("draft-root");
-    expect(rebound.sectionsById["section-alpha"].draftNodeIds).toEqual(["screen-root"]);
+    expect(rebound.sectionsById["section-draft"].canonicalFrameId).toBe("draft-root");
+    expect(rebound.sectionsById["section-root"].canonicalFrameId).toBe("screen-root");
 
     const rejected = variantReducer(rebound, {
       type: "bindCanonicalFrame",
-      sectionId: "section-alpha",
+      sectionId: "section-draft",
       canonicalFrameId: "foreign-root",
       now: NOW,
     });
@@ -286,6 +287,27 @@ describe("variantReducer", () => {
     expect(parseProjectSnapshotV2(moved).ok).toBe(true);
   });
 
+  it("duplicates selected widgets as one V2 reducer operation", () => {
+    const project = makeFixture();
+    const duplicated = variantReducer(project, {
+      type: "duplicateVariantWidgets",
+      variantId: "variant-root",
+      widgetIds: ["button-a"],
+      rootWidgetIds: ["button-copy"],
+      offset: { x: 16, y: 16 },
+      now: NOW,
+    });
+
+    expect(duplicated.widgetsById["button-copy"]).toMatchObject({
+      parentId: "screen-root",
+      type: "Button",
+      x: 26,
+      y: 26,
+    });
+    expect(duplicated.widgetsById["screen-root"].childrenIds).toEqual(["button-a", "button-copy"]);
+    expect(parseProjectSnapshotV2(duplicated).ok).toBe(true);
+  });
+
   it("inserts widgets into the targeted Variant subtree and rejects cross-variant parents", () => {
     const project = variantReducer(makeFixture(), {
       type: "createVariant",
@@ -345,6 +367,99 @@ describe("variantReducer", () => {
     });
     expect(rejected).toBe(inserted);
     expect(parseProjectSnapshotV2(inserted).ok).toBe(true);
+  });
+
+  it("moves widgets across sections inside one StateBoard", () => {
+    const project = variantReducer(makeFixture(), {
+      type: "createVariant",
+      boardId: "board-alpha",
+      mode: "blank",
+      name: "Draft",
+      variantId: "variant-draft",
+      rootWidgetId: "draft-root",
+      now: NOW,
+    });
+
+    const moved = variantReducer(project, {
+      type: "moveVariantWidget",
+      widgetId: "button-a",
+      targetParentId: "draft-root",
+      targetIndex: 0,
+      now: NOW,
+    });
+
+    expect(moved.widgetsById["button-a"].parentId).toBe("draft-root");
+    expect(moved.widgetsById["screen-root"].childrenIds).toEqual([]);
+    expect(moved.widgetsById["draft-root"].childrenIds).toEqual(["button-a"]);
+    expect(parseProjectSnapshotV2(moved).ok).toBe(true);
+  });
+
+  it("duplicates a state frame inside the same section as a non-canonical draft frame", () => {
+    const project = makeFixture();
+    const duplicated = variantReducer(project, {
+      type: "duplicateSectionFrame",
+      sectionId: "section-root",
+      frameId: "screen-root",
+      newFrameId: "draft-frame-root",
+      offset: { x: 40, y: 40 },
+      now: NOW,
+    });
+
+    expect(duplicated.stateBoardsById["board-alpha"].canonicalVariantId).toBe("variant-root");
+    expect(duplicated.variantsById["variant-root"].rootWidgetId).toBe("screen-root");
+    expect(duplicated.sectionsById["section-root"].canonicalFrameId).toBe("screen-root");
+    expect(duplicated.sectionsById["section-root"].draftNodeIds).toContain("draft-frame-root");
+    expect(duplicated.widgetsById["draft-frame-root"]).toMatchObject({
+      type: "Screen",
+      parentId: null,
+      x: 40,
+      y: 40,
+    });
+    expect(parseProjectSnapshotV2(duplicated).ok).toBe(true);
+  });
+
+  it("moves widgets directly under a section as independent draft nodes", () => {
+    const project = makeFixture();
+    const moved = variantReducer(project, {
+      type: "moveVariantWidget",
+      widgetId: "button-a",
+      targetParentId: "section-root",
+      targetIndex: 0,
+      now: NOW,
+    });
+
+    expect(moved.widgetsById["button-a"].parentId).toBeNull();
+    expect(moved.widgetsById["screen-root"].childrenIds).toEqual([]);
+    expect(moved.sectionsById["section-root"].draftNodeIds).toEqual(["button-a"]);
+    expect(parseProjectSnapshotV2(moved).ok).toBe(true);
+  });
+
+  it("deletes regular widgets and non-canonical draft frames", () => {
+    const withDraftFrame = variantReducer(makeFixture(), {
+      type: "duplicateSectionFrame",
+      sectionId: "section-root",
+      frameId: "screen-root",
+      newFrameId: "draft-frame-root",
+      offset: { x: 40, y: 40 },
+      now: NOW,
+    });
+    const deletedDraft = variantReducer(withDraftFrame, {
+      type: "deleteVariantWidgets",
+      widgetIds: ["draft-frame-root"],
+      now: NOW,
+    });
+    expect(deletedDraft.widgetsById["draft-frame-root"]).toBeUndefined();
+    expect(deletedDraft.sectionsById["section-root"].draftNodeIds).not.toContain("draft-frame-root");
+    expect(parseProjectSnapshotV2(deletedDraft).ok).toBe(true);
+
+    const deletedWidget = variantReducer(makeFixture(), {
+      type: "deleteVariantWidgets",
+      widgetIds: ["button-a"],
+      now: NOW,
+    });
+    expect(deletedWidget.widgetsById["button-a"]).toBeUndefined();
+    expect(deletedWidget.widgetsById["screen-root"].childrenIds).toEqual([]);
+    expect(parseProjectSnapshotV2(deletedWidget).ok).toBe(true);
   });
 });
 
