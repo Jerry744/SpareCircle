@@ -1,7 +1,8 @@
 import { Copy, Monitor, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEditorBackend } from "../backend/editorStore";
-import type { ProjectSnapshotV2 } from "../backend/types/projectV2";
+import type { ProjectSnapshotV2, StateSectionNode } from "../backend/types/projectV2";
 import type { VariantAction } from "../backend/reducer/variantActions";
+import { makeSectionId } from "../backend/stateBoard/sectionModel";
 
 interface ScreensPanelProps {
   stateProject?: ProjectSnapshotV2;
@@ -40,12 +41,16 @@ function StateScreensPanel({
       <div className="overflow-y-auto p-2">
         {states.map((stateNode) => {
           const board = stateProject.stateBoardsById[stateNode.boardId];
-          const section = stateProject.sectionsById[stateProject.sectionIdByStateId[stateNode.id]];
+          const canonicalVariant = board ? stateProject.variantsById[board.canonicalVariantId] : undefined;
           const isActive = activeStateNodeId === stateNode.id;
-          const canonical = board ? stateProject.variantsById[board.canonicalVariantId] : undefined;
-          const bindingStatus = section && canonical?.rootWidgetId === section.canonicalFrameId
+          const sectionId = makeSectionId(canonicalVariant?.id ?? "");
+          const sectionNode = stateProject.treeNodesById?.[sectionId];
+          const canonicalFrameWId = sectionNode?.kind === "state_section"
+            ? sectionNode.childrenIds.find((cid) => stateProject.widgetsById[cid]?.frameRole === "canonical")
+            : undefined;
+          const bindingStatus = canonicalVariant && canonicalFrameWId === canonicalVariant.rootWidgetId
             ? "valid"
-            : section
+            : sectionNode
               ? "conflict"
               : "missing";
           return (
