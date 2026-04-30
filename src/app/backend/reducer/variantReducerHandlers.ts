@@ -9,7 +9,7 @@
  * - Use `touchVariant` when a mutation should refresh variant timestamps.
  * - Keep section index synchronization at reducer level via `syncIfChanged`.
  */
-import type { ProjectSnapshotV2 } from "../types/projectV2";
+import type { ProjectSnapshotV2, StateSectionNode } from "../types/projectV2";
 import type { StateBoard } from "../types/stateBoard";
 import type { Variant, VariantStatus } from "../types/variant";
 import type { WidgetNode } from "../types/widget";
@@ -18,7 +18,7 @@ import { DEFAULT_STATE_BOARD_META } from "../types/stateBoard";
 import { ID_PREFIX, makeId } from "../types/idPrefixes";
 import { cloneVariant } from "../stateBoard/variantCloning";
 import { reassignCanonicalAfterMutation } from "../stateBoard/variantHelpers";
-import { syncSectionIndexes } from "../stateBoard/sectionModel";
+import { syncSectionIndexes, makeSectionId } from "../stateBoard/sectionModel";
 import { createWidgetNode } from "../widgets";
 import { touchVariant } from "./helpers";
 import type { VariantAction } from "./variantActions";
@@ -71,12 +71,14 @@ function collectVariantWidgetIds(project: ProjectSnapshotV2, variantId: string):
   if (!variant) return ids;
   const canonicalIds = collectWidgetSubtreeIds(project.widgetsById, variant.rootWidgetId);
   for (const id of canonicalIds) ids.add(id);
-  const sectionId = project.sectionIdByStateId[variant.id];
-  const section = project.sectionsById[sectionId];
-  if (section) {
-    for (const draftNodeId of section.draftNodeIds) {
-      const draftIds = collectWidgetSubtreeIds(project.widgetsById, draftNodeId);
-      for (const id of draftIds) ids.add(id);
+  for (const node of Object.values(project.treeNodesById ?? {})) {
+    if (node.kind === "state_section" && node.stateId === variantId) {
+      for (const childId of node.childrenIds) {
+        if (childId !== variant.rootWidgetId) {
+          const draftIds = collectWidgetSubtreeIds(project.widgetsById, childId);
+          for (const id of draftIds) ids.add(id);
+        }
+      }
     }
   }
   return ids;
@@ -90,17 +92,21 @@ function findVariantIdForWidget(project: ProjectSnapshotV2, widgetId: string): s
   for (const variant of Object.values(project.variantsById)) {
     if (collectWidgetSubtreeIds(project.widgetsById, variant.rootWidgetId).has(widgetId)) return variant.id;
   }
-  for (const section of Object.values(project.sectionsById)) {
-    for (const draftNodeId of section.draftNodeIds) {
-      if (collectWidgetSubtreeIds(project.widgetsById, draftNodeId).has(widgetId)) return section.stateId;
+  for (const node of Object.values(project.treeNodesById ?? {})) {
+    if (node.kind !== "state_section") continue;
+    for (const childId of node.childrenIds) {
+      if (childId !== project.variantsById[node.stateId]?.rootWidgetId &&
+          collectWidgetSubtreeIds(project.widgetsById, childId).has(widgetId)) {
+        return node.stateId;
+      }
     }
   }
   return null;
 }
 
 function findSectionIdForRoot(project: ProjectSnapshotV2, rootWidgetId: string): string | null {
-  for (const section of Object.values(project.sectionsById)) {
-    if (section.draftNodeIds.includes(rootWidgetId)) return section.id;
+  for (const node of Object.values(project.treeNodesById ?? {})) {
+    if (node.kind === "state_section" && node.childrenIds.includes(rootWidgetId)) return node.id;
   }
   return null;
 }
@@ -394,8 +400,9 @@ export function handleMoveVariantWidget(
   action: Extract<VariantAction, { type: "moveVariantWidget" }>,
 ): ProjectSnapshotV2 {
   const widget = project.widgetsById[action.widgetId];
-  const targetSection = project.sectionsById[action.targetParentId];
   const targetParent = project.widgetsById[action.targetParentId];
+  const targetTreeNode = !targetParent ? project.treeNodesById?.[action.targetParentId] : undefined;
+  const targetSection = targetTreeNode?.kind === "state_section" ? targetTreeNode : undefined;
   if (!widget || (!targetParent && !targetSection)) return project;
   if (targetParent && !CONTAINER_WIDGET_TYPES.has(targetParent.type)) return project;
 
@@ -415,12 +422,12 @@ export function handleMoveVariantWidget(
   const descendants = collectWidgetSubtreeIds(project.widgetsById, widget.id);
   if (targetParent && descendants.has(targetParent.id)) return project;
 
-  const sourceSection = sourceSectionId ? project.sectionsById[sourceSectionId] : null;
-  const sourceSiblings = sourceParent?.childrenIds ?? sourceSection?.draftNodeIds ?? [];
+  const sourceSectionNode = sourceSectionId ? (project.treeNodesById?.[sourceSectionId]) : undefined;
+  const sourceSiblings = sourceParent?.childrenIds ?? (sourceSectionNode?.kind === "state_section" ? sourceSectionNode.childrenIds : []);
   const sourceIndex = sourceSiblings.indexOf(widget.id);
   if (sourceIndex < 0) return project;
 
-  const targetSiblings = targetParent?.childrenIds ?? targetSection?.draftNodeIds ?? [];
+  const targetSiblings = targetParent?.childrenIds ?? targetSection?.childrenIds ?? [];
   const normalizedTargetIndex = Math.max(0, Math.min(action.targetIndex, targetSiblings.length));
   const sameParent = (sourceParent?.id ?? sourceSectionId) === (targetParent?.id ?? targetSection?.id);
   const adjustedTargetIndex = sameParent && sourceIndex < normalizedTargetIndex
@@ -438,39 +445,31 @@ export function handleMoveVariantWidget(
   if (targetParent) widgetsById[targetParent.id] = { ...targetParent, childrenIds: nextTargetChildren };
   widgetsById[widget.id] = { ...widget, parentId: targetParent?.id ?? null };
 
-  const sectionsById = { ...project.sectionsById };
-  if (sourceSection && !sameParent) sectionsById[sourceSection.id] = { ...sourceSection, draftNodeIds: nextSourceChildren };
-  if (targetSection) sectionsById[targetSection.id] = { ...targetSection, draftNodeIds: nextTargetChildren };
-
-  // Also update treeNodesById for section children
+  // Update treeNodesById for section children
   const treeNodesById = project.treeNodesById ? { ...project.treeNodesById } : {};
-  let treeChanged = false;
   if (sourceSectionId) {
     const srcNode = treeNodesById[sourceSectionId];
     if (srcNode && srcNode.kind === "state_section") {
       const nextIds = srcNode.childrenIds.filter((cid) => cid !== widget.id);
       if (nextIds.length !== srcNode.childrenIds.length) {
         treeNodesById[sourceSectionId] = { ...srcNode, childrenIds: nextIds };
-        treeChanged = true;
       }
     }
   }
   if (targetSection && targetSection.id !== sourceSectionId) {
-    const tgtNode = treeNodesById[targetSection.id];
-    if (tgtNode && tgtNode.kind === "state_section") {
-      const nextIds = tgtNode.childrenIds.includes(widget.id)
-        ? tgtNode.childrenIds
-        : [...tgtNode.childrenIds, widget.id];
-      treeNodesById[targetSection.id] = { ...tgtNode, childrenIds: nextIds };
-      treeChanged = true;
+    const tgtNode = treeNodesById[targetSection.id] as typeof targetSection | undefined;
+    if (tgtNode) {
+      treeNodesById[targetSection.id] = {
+        ...tgtNode,
+        childrenIds: tgtNode.childrenIds.includes(widget.id) ? tgtNode.childrenIds : [...tgtNode.childrenIds, widget.id],
+      };
     }
   }
 
   const next: ProjectSnapshotV2 = {
     ...project,
-    sectionsById,
     widgetsById,
-    ...(treeChanged ? { treeNodesById } : {}),
+    treeNodesById,
   };
   return touchVariant(touchVariant(next, owningVariantId, action.now), targetVariantId, action.now);
 }
@@ -480,7 +479,8 @@ export function handleDuplicateSectionFrame(
   project: ProjectSnapshotV2,
   action: Extract<VariantAction, { type: "duplicateSectionFrame" }>,
 ): ProjectSnapshotV2 {
-  const section = project.sectionsById[action.sectionId];
+  const sectionNode = project.treeNodesById?.[action.sectionId];
+  const section = sectionNode?.kind === "state_section" ? sectionNode : undefined;
   const variant = section ? project.variantsById[section.stateId] : undefined;
   const sourceRoot = project.widgetsById[action.frameId];
   if (!section || !variant || !sourceRoot || sourceRoot.type !== "Screen") return project;
@@ -506,30 +506,22 @@ export function handleDuplicateSectionFrame(
       childrenIds: source.childrenIds.map((childId) => idMap.get(childId)).filter((id): id is string => Boolean(id)),
       x: isRoot ? source.x + offset.x : source.x,
       y: isRoot ? source.y + offset.y : source.y,
+      ...(isRoot ? { frameRole: "draft" as const } : {}),
     };
     newWidgets[newId] = rewriteClonedBindings(cloned, idMap);
   }
   const newFrameId = idMap.get(sourceRoot.id);
   if (!newFrameId) return project;
-  const existingTreeNode = project.treeNodesById?.[section.id];
   const next: ProjectSnapshotV2 = {
     ...project,
-    sectionsById: {
-      ...project.sectionsById,
-      [section.id]: { ...section, draftNodeIds: [...section.draftNodeIds, newFrameId] },
-    },
     widgetsById: { ...project.widgetsById, ...newWidgets },
-    ...(existingTreeNode
-      ? {
-          treeNodesById: {
-            ...project.treeNodesById,
-            [section.id]: {
-              ...existingTreeNode,
-              childrenIds: [...existingTreeNode.childrenIds, newFrameId],
-            },
-          },
-        }
-      : {}),
+    treeNodesById: {
+      ...project.treeNodesById,
+      [section.id]: {
+        ...section,
+        childrenIds: [...section.childrenIds, newFrameId],
+      },
+    },
   };
   return touchVariant(next, variant.id, action.now);
 }
@@ -551,31 +543,20 @@ export function handleDeleteVariantWidgets(
   }
 
   const { widgetsById, deletedIds } = removeWidgetSubtrees(project.widgetsById, roots);
-  const sectionsById = { ...project.sectionsById };
   const treeNodesById = project.treeNodesById ? { ...project.treeNodesById } : {};
-  for (const section of Object.values(project.sectionsById)) {
-    const draftNodeIds = section.draftNodeIds.filter((nodeId) => !deletedIds.has(nodeId));
-    if (draftNodeIds.length !== section.draftNodeIds.length) {
-      sectionsById[section.id] = { ...section, draftNodeIds };
-      touchedVariantIds.add(section.stateId);
-    }
-  }
-  let treeChanged = false;
   for (const [nodeId, node] of Object.entries(treeNodesById)) {
     if (node.kind === "state_section") {
       const nextChildrenIds = node.childrenIds.filter((cid) => !deletedIds.has(cid));
       if (nextChildrenIds.length !== node.childrenIds.length) {
         treeNodesById[nodeId] = { ...node, childrenIds: nextChildrenIds };
-        treeChanged = true;
       }
     }
   }
 
   let next: ProjectSnapshotV2 = {
     ...project,
-    sectionsById,
     widgetsById,
-    ...(treeChanged ? { treeNodesById } : {}),
+    treeNodesById,
   };
   for (const variantId of touchedVariantIds) next = touchVariant(next, variantId, action.now);
   return next;
@@ -751,26 +732,31 @@ export function handleCreateSection(
   action: Extract<VariantAction, { type: "createSection" }>,
 ): ProjectSnapshotV2 {
   if (!project.variantsById[action.stateId]) return project;
-  const synced = syncSectionIndexes(project);
-  const sectionId = synced.sectionIdByStateId[action.stateId];
-  if (!action.name?.trim() || !sectionId) return synced;
-  const section = synced.sectionsById[sectionId];
-  return {
-    ...synced,
-    sectionsById: { ...synced.sectionsById, [sectionId]: { ...section, name: action.name.trim() } },
-  };
+  const sectionId = makeSectionId(action.stateId);
+  const node = project.treeNodesById?.[sectionId];
+  if (!action.name?.trim() || !node || node.kind !== "state_section") return project;
+  return syncSectionIndexes({
+    ...project,
+    treeNodesById: {
+      ...project.treeNodesById,
+      [sectionId]: { ...node, name: action.name.trim() },
+    },
+  });
 }
 
 export function handleRenameSection(
   project: ProjectSnapshotV2,
   action: Extract<VariantAction, { type: "renameSection" }>,
 ): ProjectSnapshotV2 {
-  const section = project.sectionsById[action.sectionId];
+  const node = project.treeNodesById?.[action.sectionId];
   const name = action.name.trim();
-  if (!section || !name || section.name === name) return project;
+  if (!node || node.kind !== "state_section" || !name || (node as StateSectionNode).name === name) return project;
   return {
     ...project,
-    sectionsById: { ...project.sectionsById, [section.id]: { ...section, name } },
+    treeNodesById: {
+      ...project.treeNodesById,
+      [action.sectionId]: { ...node, name },
+    },
   };
 }
 
@@ -779,9 +765,10 @@ export function handleBindCanonicalFrame(
   project: ProjectSnapshotV2,
   action: Extract<VariantAction, { type: "bindCanonicalFrame" }>,
 ): ProjectSnapshotV2 {
-  const section = project.sectionsById[action.sectionId];
-  if (!section) return project;
-  const variant = project.variantsById[section.stateId];
+  const node = project.treeNodesById?.[action.sectionId];
+  if (!node || node.kind !== "state_section") return project;
+  const stateSection = node as StateSectionNode;
+  const variant = project.variantsById[stateSection.stateId];
   if (!variant || variant.rootWidgetId !== action.canonicalFrameId) return project;
   const board = project.stateBoardsById[variant.boardId];
   if (!board) return project;
