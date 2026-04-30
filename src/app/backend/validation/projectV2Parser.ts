@@ -190,8 +190,8 @@ function parseScreenTreeIndex(input: unknown, path: string): ParseResult<Record<
 }
 
 function parseTreeNodesById(input: unknown, path: string): ParseResult<Record<string, TreeNode>> {
-  if (input === undefined) return parseOk({});
-  if (!isRecord(input)) return parseFail(`${path} must be an object`);
+  if (!isRecord(input)) return parseFail(`${path} must be a non-empty object — tree structure is required`);
+  if (Object.keys(input).length === 0) return parseFail(`${path} must contain at least one tree node`);
   const result: Record<string, TreeNode> = {};
   for (const [key, raw] of Object.entries(input)) {
     if (!isRecord(raw)) return parseFail(`${path}["${key}"] must be an object`);

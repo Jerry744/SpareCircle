@@ -90,27 +90,23 @@ export function deriveSectionIndexes<T extends ProjectSnapshotCore>(project: T):
         };
         treeNodesById[sectionId] = stateSection;
       } else {
-        const existingSection = project.sectionsById?.[sectionId];
-        const draftNodeIds = (existingSection?.draftNodeIds ?? []).filter(
-          (nodeId) => nodeId !== variant.rootWidgetId && Boolean(project.widgetsById[nodeId]),
-        );
         sectionsById[sectionId] = {
           id: sectionId,
           screenId,
           stateId: variant.id,
-          name: existingSection?.name?.trim() || `${variant.name} Section`,
+          name: `${variant.name} Section`,
           canonicalFrameId: variant.rootWidgetId,
-          draftNodeIds,
+          draftNodeIds: [],
           order,
         };
         treeNodesById[sectionId] = {
           id: sectionId,
           kind: "state_section",
           parentId: screenRootId,
-          childrenIds: [variant.rootWidgetId, ...draftNodeIds],
+          childrenIds: [variant.rootWidgetId],
           screenId,
           stateId: variant.id,
-          name: sectionsById[sectionId].name,
+          name: `${variant.name} Section`,
           sectionId,
           x: 0, y: 0, width: 320, height: 480,
           layoutMode: "auto",
