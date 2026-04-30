@@ -2,13 +2,14 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Copy, Eye, EyeOff, FolderOpen, Monitor, Plus, Star, Trash2 } from "lucide-react";
 import type { VariantAction } from "../../backend/reducer/variantActions";
-import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
+import type { ProjectSnapshotV2, StateSectionNode } from "../../backend/types/projectV2";
 import type { StateBoard } from "../../backend/types/stateBoard";
 import type { Variant } from "../../backend/types/variant";
 import { CONTAINER_WIDGET_TYPES, type WidgetNode } from "../../backend/types/widget";
 import { ID_PREFIX, makeId } from "../../backend/types/idPrefixes";
 import type { StateBoardSelection } from "./stateBoardSelection";
 import { getSelectedVariantIds, getSelectedWidgetIdsByVariant, getSelectedWidgetIdsForVariant } from "./stateBoardSelection";
+import { makeScreenRootId, getScreenIdForStateNode } from "../../backend/stateBoard/sectionModel";
 
 type DropPosition = "before" | "inside" | "after";
 type DragSource =
@@ -103,23 +104,38 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     window.localStorage.setItem(storageKey, JSON.stringify(expandedIds));
   }, [expandedIds, storageKey]);
 
-  const sectionGroups = useMemo(() => board.variantIds
-    .map((variantId): SectionGroup | null => {
-      const variant = project.variantsById[variantId];
-      if (!variant) return null;
-      const sectionId = project.sectionIdByStateId[variant.id];
-      const section = project.sectionsById[sectionId];
-      const canonicalRoot = buildTree(project.widgetsById, variant.rootWidgetId);
-      const frames: SectionFrame[] = canonicalRoot && section
-        ? [{ variant, root: canonicalRoot, sectionId, isCanonicalFrame: true }]
-        : [];
-      for (const draftNodeId of section?.draftNodeIds ?? []) {
-        const draftTree = buildTree(project.widgetsById, draftNodeId);
-        if (draftTree) frames.push({ variant, root: draftTree, sectionId, isCanonicalFrame: false });
-      }
-      return section && frames.length > 0 ? { variant, sectionId, frames } : null;
-    })
-    .filter((item): item is SectionGroup => Boolean(item)), [board.variantIds, project.sectionIdByStateId, project.sectionsById, project.variantsById, project.widgetsById]);
+  const sectionGroups = useMemo(() => {
+    const stateNode = project.navigationMap.stateNodes[board.stateNodeId];
+    if (!stateNode) return [];
+    const screenId = getScreenIdForStateNode(stateNode);
+    const screenRootId = makeScreenRootId(screenId);
+    const screenRoot = project.treeNodesById?.[screenRootId];
+    if (!screenRoot || screenRoot.kind !== "screen_root") return [];
+
+    return screenRoot.childrenIds
+      .map((childId): SectionGroup | null => {
+        const treeNode = project.treeNodesById?.[childId];
+        if (!treeNode || treeNode.kind !== "state_section") return null;
+        const stateSection = treeNode as StateSectionNode;
+        const variant = project.variantsById[stateSection.stateId];
+        if (!variant) return null;
+        const section = project.sectionsById[stateSection.sectionId];
+        if (!section) return null;
+
+        const frames: SectionFrame[] = [];
+        for (const childId of stateSection.childrenIds) {
+          const widget = project.widgetsById[childId];
+          if (!widget || widget.type !== "Screen") continue;
+          const tree = buildTree(project.widgetsById, childId);
+          if (!tree) continue;
+          const isCanonical = widget.frameRole === "canonical" || (variant.rootWidgetId === childId && widget.frameRole !== "draft");
+          frames.push({ variant, root: tree, sectionId: stateSection.sectionId, isCanonicalFrame: isCanonical });
+        }
+
+        return frames.length > 0 ? { variant, sectionId: stateSection.sectionId, frames } : null;
+      })
+      .filter((item): item is SectionGroup => Boolean(item));
+  }, [project.treeNodesById, project.variantsById, project.widgetsById, project.sectionsById, project.navigationMap.stateNodes, board.stateNodeId]);
 
   const selectedFrameRootIdsByVariant = useMemo(() => {
     const result: Record<string, Set<string>> = {};
@@ -127,10 +143,13 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     for (const [variantId, widgetIds] of Object.entries(selectedWidgetIdsByVariant)) {
       const variant = project.variantsById[variantId];
       if (!variant) continue;
-      const sectionId = project.sectionIdByStateId[variant.id];
-      const section = project.sectionsById[sectionId];
-      if (!section) continue;
-      const frameRootIds = new Set<string>([variant.rootWidgetId, ...section.draftNodeIds]);
+      const sectionNodes = Object.values(project.treeNodesById ?? {}).filter(
+        (n): n is StateSectionNode => n.kind === "state_section" && n.stateId === variantId,
+      );
+      const frameRootIds = new Set<string>();
+      for (const section of sectionNodes) {
+        for (const cid of section.childrenIds) frameRootIds.add(cid);
+      }
       const roots = new Set<string>();
       for (const widgetId of widgetIds) {
         if (frameRootIds.has(widgetId)) {
@@ -151,7 +170,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
       if (roots.size > 0) result[variantId] = roots;
     }
     return result;
-  }, [selection, project.variantsById, project.sectionIdByStateId, project.sectionsById, project.widgetsById]);
+  }, [selection, project.variantsById, project.treeNodesById, project.widgetsById]);
 
   const addState = () => {
     const variantId = makeId(ID_PREFIX.variant);
@@ -160,12 +179,25 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     onSelectionChange({ kind: "screen", variantIds: [variantId] });
   };
 
-  const duplicateFrame = (sectionId = project.sectionIdByStateId[activeVariantId], frameId = project.variantsById[activeVariantId]?.rootWidgetId) => {
-    if (!sectionId || !frameId) return;
+  const duplicateFrame = (sectionId?: string, frameId?: string) => {
+    const sid = sectionId ?? (() => {
+      const stateNode = project.navigationMap.stateNodes[board.stateNodeId];
+      if (!stateNode) return undefined;
+      const screenId = getScreenIdForStateNode(stateNode);
+      const screenRootId = makeScreenRootId(screenId);
+      const root = project.treeNodesById?.[screenRootId];
+      if (!root || root.kind !== "screen_root") return undefined;
+      const sectionNode = root.childrenIds
+        .map((cid) => project.treeNodesById?.[cid])
+        .find((n): n is StateSectionNode => n?.kind === "state_section" && n.stateId === activeVariantId);
+      return sectionNode?.sectionId;
+    })();
+    const fid = frameId ?? project.variantsById[activeVariantId]?.rootWidgetId;
+    if (!sid || !fid) return;
     onVariantAction({
       type: "duplicateSectionFrame",
-      sectionId,
-      frameId,
+      sectionId: sid,
+      frameId: fid,
       newFrameId: makeId(ID_PREFIX.variant),
     });
   };
