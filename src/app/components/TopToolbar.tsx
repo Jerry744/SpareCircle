@@ -8,9 +8,6 @@ import {
   Redo,
   Grid,
   Maximize2,
-  Sun,
-  Moon,
-  Monitor,
   Palette,
   Magnet,
   Grid2x2,
@@ -334,18 +331,7 @@ export function TopToolbar({
             NavMap
           </button>
         </div>
-        <div className="h-6 w-px bg-neutral-600 mx-1" />
-        <div className="flex items-center gap-1 bg-neutral-800 rounded p-0.5">
-          <button className="px-2 py-1 hover:bg-neutral-600 rounded text-xs transition-colors text-neutral-200">
-            <Monitor size={14} />
-          </button>
-          <button className="px-2 py-1 hover:bg-neutral-600 rounded text-xs transition-colors text-neutral-200">
-            <Sun size={14} />
-          </button>
-          <button className="px-2 py-1 hover:bg-neutral-600 rounded text-xs transition-colors text-neutral-200">
-            <Moon size={14} />
-          </button>
-        </div>
+
       </div>
 
       {/* Right Section - Project Actions */}

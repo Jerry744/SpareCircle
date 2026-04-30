@@ -361,22 +361,22 @@ function IDELayoutInner() {
             onOpenStateVariant={handleOpenStateVariant}
             onVariantAction={handleVariantAction}
           />
-          <div className="h-px bg-neutral-900" />
-          <HierarchyPanel
-            stateHierarchyContext={
-              current.level === "board" && currentBoard
-                ? {
-                    project: navMapProject,
-                    board: currentBoard,
-                    activeVariantId: current.variantId,
-                    selection: resolvedStateBoardSelection ?? { kind: "screen", variantIds: [current.variantId] },
-                    onSelectVariant: replaceVariant,
-                    onSelectionChange: setStateBoardSelection,
-                    onVariantAction: handleVariantAction,
-                  }
-                : undefined
-            }
-          />
+          {current.level === "board" && currentBoard && (
+            <>
+              <div className="h-px bg-neutral-900" />
+              <HierarchyPanel
+                stateHierarchyContext={{
+                  project: navMapProject,
+                  board: currentBoard,
+                  activeVariantId: current.variantId,
+                  selection: resolvedStateBoardSelection ?? { kind: "screen", variantIds: [current.variantId] },
+                  onSelectVariant: replaceVariant,
+                  onSelectionChange: setStateBoardSelection,
+                  onVariantAction: handleVariantAction,
+                }}
+              />
+            </>
+          )}
         </div>
 
         {/* Left sidebar collapsed edge trigger */}
