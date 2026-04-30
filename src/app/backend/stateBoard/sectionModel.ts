@@ -145,18 +145,19 @@ export function deriveSectionIndexes<T extends ProjectSnapshotCore>(project: T):
   // Phase 2: create ScreenRootNodes
   for (const screenRootId of screenRootIds) {
     const existingRoot = project.treeNodesById?.[screenRootId];
-    const childIds = Object.values(treeNodesById)
+    const sectionChildIds = Object.values(treeNodesById)
       .filter((n): n is StateSectionNode => n.kind === "state_section" && n.parentId === screenRootId)
       .map((n) => n.id);
+    // Merge existing root's children with newly created sections
+    const existingChildren = existingRoot?.kind === "screen_root" ? (existingRoot as ScreenRootNode).childrenIds : [];
+    const childIds = [...new Set([...existingChildren, ...sectionChildIds])];
 
-    treeNodesById[screenRootId] = existingRoot?.kind === "screen_root"
-      ? (existingRoot as ScreenRootNode)
-      : {
-          id: screenRootId,
-          kind: "screen_root",
-          parentId: null,
-          childrenIds: childIds,
-        } as ScreenRootNode;
+    treeNodesById[screenRootId] = {
+      id: screenRootId,
+      kind: "screen_root",
+      parentId: null,
+      childrenIds: childIds,
+    } as ScreenRootNode;
   }
 
   return {

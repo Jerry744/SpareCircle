@@ -89,6 +89,8 @@ export interface ProjectSnapshotCore {
   // T5.2: structural tree nodes (ScreenRoot, StateSection, FreeLayer).
   // These encode the per-screen tree hierarchy; indexes below are derived.
   treeNodesById: Record<string, TreeNode>;
+  // Derived indexes — built from treeNodesById via syncSectionIndexes().
+  // These are NOT the source of truth for tree structure.
   sectionsById: Record<string, Section>;
   sectionOrderByScreenId: Record<string, string[]>;
   sectionIdByStateId: Record<string, string>;
