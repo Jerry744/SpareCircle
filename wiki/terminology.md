@@ -56,18 +56,18 @@
 
 ---
 
-### 3.5 State（左栏 / 某屏下的多个 states）与 Section / Canonical Frame（T5 模型）
+### 3.5 State（左栏 / 某屏下的多个 states）与 StateSection / Canonical Frame（T5 模型）
 
-以下对应 **Widget Edit Canvas** 与 **Section** 能力规划（见 `dev-plan/T5_widget-section-canonical-frame-3-agent-plan.md` 与 `types/projectV2.ts` 中 `Section`）。
+以下对应 **Widget Edit Canvas** 与 **StateSection** 能力规划（见 `dev-plan/T5_widget-section-canonical-frame-3-agent-plan.md` 与 `types/projectV2.ts` 中 `Section`，后续命名建议迁移为 `StateSection`）。
 
 | 术语 | 含义 |
 | --- | --- |
-| **State**（左栏列表） | 在 **当前选中的逻辑 Screen（`screenId`）** 下，可存在 **多个** 编辑用状态；与 **StateNode** 一一对应产生 **Section**（规划：`state → section` 1:1）。 |
-| **Section** | 某个 state 的 **工作区容器**：挂 **唯一 Canonical Frame** 与若干 **草稿** 节点 id。 |
-| **Canonical Frame** | 某个 **Section** 内 **唯一** 绑定的、**参与导出** 的 **Screen 类型** 根 widget（工程上即该 Section 的 canonical 根）。同一 Section **不能** 绑定第二个 canonical。 |
-| **Draft 节点** | Section 内非 canonical 的素材/实验 widget，可编辑但不冒充 canonical。 |
+| **State**（左栏列表） | 在 **当前选中的逻辑 Screen（`screenId`）** 下，可存在 **多个** 编辑用状态；与 **StateNode** 一一对应产生 **StateSection**（规划：`state → stateSection` 1:1）。 |
+| **StateSection** | 与一个 screen state 绑定的 **工作区容器**：挂 **唯一 Canonical Frame** 与若干 **Draft Frame**。 |
+| **Canonical Frame** | 某个 **StateSection** 内 **唯一** 绑定的、**参与导出** 的 **Screen 类型** 根 widget（工程上即该 StateSection 的 canonical 根）。同一 StateSection **不能** 绑定第二个 canonical。 |
+| **Draft Frame** | StateSection 内非 canonical 的 Screen frame，可编辑、可转正（绑定为 canonical），默认不直接导出。 |
 
-**关系链（目标不变量）**：`n states → n sections → n canonical frames`；**多屏数据隔离**：在 Screen A 下的操作不应错误修改 Screen B 的节点树。
+**关系链（目标不变量）**：`n states → n stateSections → n canonical frames`；**多屏数据隔离**：在 Screen A 下的操作不应错误修改 Screen B 的节点树。
 
 ---
 
@@ -123,9 +123,9 @@
 | 口语 / UI | 更精确的模型名 | 备注 |
 | --- | --- | --- |
 | 「Screen」 | `screenId` / ScreenGroup / v1 `screens[]` | v2 优先用 `screenId` 与组；v1 的 screen 是另一套列表模型 |
-| 「State」 | `StateNode` 或左栏「当前屏下的 state」 | 后者与 Section 规划对齐时需看 `activeScreenId` 语义 |
-| 「Canonical」 | `StateBoard.canonicalVariantId` / Section 的 **Canonical Frame** | 前者是 Variant 级；后者是 T5 Section 内唯一导出 frame |
-| 「根 Frame」 | Variant 的 `rootWidgetId`（类型为 Widget `Screen`） | 与 Section canonical 绑定后即为「可导出屏幕 frame」 |
+| 「State」 | `StateNode` 或左栏「当前屏下的 state」 | 后者与 StateSection 规划对齐时需看 `activeScreenId` 语义 |
+| 「Canonical」 | `StateBoard.canonicalVariantId` / StateSection 的 **Canonical Frame** | 前者是 Variant 级；后者是 T5 StateSection 内唯一导出 frame |
+| 「根 Frame」 | Variant 的 `rootWidgetId`（类型为 Widget `Screen`） | 与 StateSection canonical 绑定后即为「可导出屏幕 frame」 |
 
 ---
 
@@ -144,7 +144,7 @@ flowchart TB
   VAR --> RW[rootWidgetId → Widget type Screen]
 
   subgraph ScreenScope["逻辑屏 screenId"]
-    SEC[Section per state]
+    SEC[StateSection per state]
     CF[Canonical Frame 唯一]
     DRAFT[Draft nodes]
     SEC --> CF
@@ -162,7 +162,7 @@ flowchart TB
 | --- | --- |
 | v2 工程结构 | `dev-plan/interaction-design-framework/00-architecture.md` |
 | 核心类型与 INV | `dev-plan/interaction-design-framework/01-data-model.md` |
-| `Section` 与索引 | `src/app/backend/types/projectV2.ts`、`src/app/backend/stateBoard/sectionModel.ts` |
+| `StateSection` 与索引 | `src/app/backend/types/projectV2.ts`、`src/app/backend/stateBoard/sectionModel.ts` |
 | StateBoard UI | `guidelines/v2-stateboard-ui-structure.md` |
 | Widget 存储 | `guidelines/widget-node-storage-system.md` |
 

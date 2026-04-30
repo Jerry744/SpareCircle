@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ProjectSnapshotV2 } from "../../backend/types/projectV2";
 import type { NavMapSelection } from "../../backend/types/navMapSelection";
 import type { NavMapAction } from "../../backend/reducer/navMapActions";
@@ -18,29 +20,49 @@ export function NavMapMiniOverlay({
   onAction,
   onGoToMap,
 }: NavMapMiniOverlayProps): JSX.Element {
+  const [shrunk, setShrunk] = useState(false);
+
   return (
-    <div className="h-40 w-60 overflow-hidden rounded border border-highlight-500/50 bg-neutral-900/95 shadow-lg ring-1 ring-neutral-500/40">
-      <div className="flex items-center justify-between border-b border-highlight-500/40 px-2 py-1">
+    <div
+      className={
+        "overflow-hidden rounded border border-neutral-500/40 bg-neutral-900/95 shadow-lg ring-1 ring-neutral-500/40" +
+        (shrunk ? " w-60" : " h-40 w-60")
+      }
+    >
+      <div className="flex items-center justify-between border-b border-neutral-500/30 px-2 py-1">
         <span className="text-[11px] text-neutral-300">Navigation Map</span>
-        <button
-          type="button"
-          onClick={onGoToMap}
-          className="text-[11px] text-highlight-300 hover:text-highlight-200"
-        >
-          Back
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setShrunk((s) => !s)}
+            className="text-neutral-500 hover:text-neutral-300"
+            title={shrunk ? "Expand" : "Shrink"}
+            aria-label={shrunk ? "Expand" : "Shrink"}
+          >
+            {shrunk ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          </button>
+          <button
+            type="button"
+            onClick={onGoToMap}
+            className="text-[11px] text-neutral-400 hover:text-neutral-200"
+          >
+            Back
+          </button>
+        </div>
       </div>
-      <div className="h-[calc(100%-29px)]">
-        <NavigationMap
-          map={project.navigationMap}
-          selection={selection}
-          screenGroups={project.screenGroups}
-          transitionEventBindings={project.transitionEventBindings}
-          onSelectionChange={onSelectionChange}
-          onAction={onAction}
-          hideInspector
-        />
-      </div>
+      {!shrunk && (
+        <div className="h-[calc(100%-29px)]">
+          <NavigationMap
+            map={project.navigationMap}
+            selection={selection}
+            screenGroups={project.screenGroups}
+            transitionEventBindings={project.transitionEventBindings}
+            onSelectionChange={onSelectionChange}
+            onAction={onAction}
+            hideInspector
+          />
+        </div>
+      )}
     </div>
   );
 }

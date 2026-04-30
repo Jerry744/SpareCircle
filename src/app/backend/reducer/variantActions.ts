@@ -54,4 +54,5 @@ export type VariantAction =
     }
   | { type: "setVariantWidgetPositions"; positions: Record<string, { x: number; y: number }>; now?: string; historyMode?: "merge" }
   | { type: "setVariantWidgetVisibility"; widgetId: string; visible: boolean; now?: string }
+  | { type: "renameWidget"; widgetId: string; name: string; now?: string }
   | { type: "setBoardResolution"; boardId: string; width: number; height: number; now?: string };

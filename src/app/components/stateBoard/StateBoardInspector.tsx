@@ -70,6 +70,7 @@ export function StateBoardInspector({
     }
 
     const widget = selectedWidgets[0];
+    const isFrame = widget.type === "Screen";
     return (
       <div className="flex h-full flex-col">
         <div className="border-b border-neutral-900 bg-neutral-800/60 p-3">
@@ -78,6 +79,14 @@ export function StateBoardInspector({
           <div className="mt-1 text-xs text-neutral-300">{widget.type}</div>
         </div>
         <div className="space-y-4 p-3">
+          <div>
+            <label className="mb-1 block text-xs text-neutral-300">Name</label>
+            <input
+              value={widget.name}
+              onChange={(event) => onVariantAction({ type: "renameWidget", widgetId: widget.id, name: event.target.value })}
+              className="w-full rounded border border-neutral-600 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-highlight-500"
+            />
+          </div>
           <div className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-300">
             Screen: {variant.name}
           </div>

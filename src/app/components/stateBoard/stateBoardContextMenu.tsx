@@ -25,6 +25,7 @@ interface StateBoardContextMenuContentProps {
   onSetCanonical(variantId: string): void;
   onCopyWidgets(widgetIds: string[]): void;
   onPasteWidgets(): void;
+  onDuplicateWidgets(widgetIds: string[]): void;
   onDeleteWidgets(widgetIds: string[]): void;
 }
 
@@ -37,6 +38,7 @@ export function StateBoardContextMenuContent({
   onSetCanonical,
   onCopyWidgets,
   onPasteWidgets,
+  onDuplicateWidgets,
   onDeleteWidgets,
 }: StateBoardContextMenuContentProps): JSX.Element {
   const menuClassName = "min-w-52 rounded-lg border border-neutral-600 bg-neutral-800 p-1.5 text-neutral-100 shadow-2xl";
@@ -108,6 +110,13 @@ export function StateBoardContextMenuContent({
         }}
       >
         {visibilityLabel}
+      </ContextMenuItem>
+      <ContextMenuItem
+        className={itemClassName}
+        disabled={widgetIds.length === 0}
+        onSelect={() => onDuplicateWidgets(widgetIds)}
+      >
+        Duplicate
       </ContextMenuItem>
       <ContextMenuItem
         className={itemClassName}

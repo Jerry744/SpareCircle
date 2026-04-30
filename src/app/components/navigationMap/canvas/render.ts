@@ -9,7 +9,6 @@ import type {
   StateNode,
   Transition,
 } from "../../../backend/types/navigationMap";
-import { DEFAULT_STATE_NODE_COLOR } from "../../../backend/types/navigationMap";
 import {
   NAV_MAP_PORT_RADIUS,
   getNodePortPosition,
@@ -199,8 +198,6 @@ function drawStateNode(
   ctx.lineWidth = selected ? 2 : 1;
   ctx.strokeStyle = selected ? theme.nodeSelectedStroke : theme.nodeStroke;
   ctx.stroke();
-  ctx.fillStyle = node.color ?? groupColor ?? DEFAULT_STATE_NODE_COLOR;
-  ctx.fillRect(r.x, r.y, 4, r.height);
   ctx.font = "600 13px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -219,7 +216,7 @@ function drawStateNode(
     ctx.textBaseline = "top";
     ctx.fillText("Group", r.x + r.width - 8, r.y + 6);
   }
-  ctx.fillStyle = theme.port;
+  ctx.fillStyle = node.color ?? groupColor ?? theme.port;
   for (const port of ["in", "out"] as const) {
     const p = getNodePortPosition(node, port);
     ctx.beginPath();

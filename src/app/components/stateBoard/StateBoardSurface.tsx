@@ -290,6 +290,23 @@ export function StateBoardSurface({
     onSelectionChange({ kind: "widget", variantId: activeVariantId, widgetIds: [] });
   };
 
+  const duplicateWidgets = (widgetIds: string[]) => {
+    const roots = filterTopLevelWidgetIds(widgetIds, project.widgetsById);
+    if (roots.length === 0) return;
+    const variant = project.variantsById[activeVariantId];
+    if (!variant) return;
+    const rootIds = makeDuplicateRootIds(roots);
+    onVariantAction({
+      type: "duplicateVariantWidgets",
+      variantId: variant.id,
+      widgetIds: roots,
+      targetParentId: variant.rootWidgetId,
+      rootWidgetIds: rootIds,
+      offset: { x: 16, y: 16 },
+    });
+    onSelectionChange({ kind: "widget", variantId: variant.id, widgetIds: rootIds });
+  };
+
   const duplicateWidgetsForDrag = (variantId: string, widgetIds: string[], world: Point) => {
     const roots = filterTopLevelWidgetIds(widgetIds, project.widgetsById);
     if (roots.length === 0) return false;
@@ -611,6 +628,11 @@ export function StateBoardSurface({
               pasteWidgets();
               return;
             }
+            if (isModifier && event.key.toLowerCase() === "d") {
+              event.preventDefault();
+              duplicateWidgets(selectedWidgetIds);
+              return;
+            }
             if (event.code === "Space" && !isSpacePressed) {
               event.preventDefault();
               setIsSpacePressed(true);
@@ -726,6 +748,7 @@ export function StateBoardSurface({
         }}
         onCopyWidgets={copyWidgets}
         onPasteWidgets={pasteWidgets}
+        onDuplicateWidgets={duplicateWidgets}
         onDeleteWidgets={deleteWidgets}
       />
     </ContextMenu>
