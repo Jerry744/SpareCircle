@@ -72,22 +72,13 @@ export function deriveSectionIndexes<T extends ProjectSnapshotCore>(project: T):
       const variant = project.variantsById[variantId];
       if (!variant) continue;
       const sectionId = makeSectionId(variant.id);
-      const existingSection = project.sectionsById?.[sectionId];
       const existingTreeNode = project.treeNodesById?.[sectionId];
 
-      // If tree node already exists for this section, keep it as source of truth
-      // but merge draft IDs from sectionsById (handlers still write to sectionsById).
       if (existingTreeNode?.kind === "state_section") {
         const stateSection = existingTreeNode as StateSectionNode;
-        const storedDraftIds = existingSection?.draftNodeIds ?? [];
-        const treeDraftIds = stateSection.childrenIds.filter(
+        const draftNodeIds = stateSection.childrenIds.filter(
           (cid) => cid !== variant.rootWidgetId && Boolean(project.widgetsById[cid]),
         );
-        // Use sectionsById draft list as primary when it has entries that exist,
-        // falling back to tree childrenIds for backward compat.
-        const draftNodeIds = storedDraftIds.length > 0
-          ? storedDraftIds.filter((nid) => nid !== variant.rootWidgetId && Boolean(project.widgetsById[nid]))
-          : treeDraftIds;
         sectionsById[sectionId] = {
           id: sectionId,
           screenId: stateSection.screenId,
@@ -99,7 +90,7 @@ export function deriveSectionIndexes<T extends ProjectSnapshotCore>(project: T):
         };
         treeNodesById[sectionId] = stateSection;
       } else {
-        // Create new tree node from variant/section data
+        const existingSection = project.sectionsById?.[sectionId];
         const draftNodeIds = (existingSection?.draftNodeIds ?? []).filter(
           (nodeId) => nodeId !== variant.rootWidgetId && Boolean(project.widgetsById[nodeId]),
         );

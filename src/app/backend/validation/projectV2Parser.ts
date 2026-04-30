@@ -12,6 +12,7 @@ import type {
   ProjectSnapshotCore,
   ProjectSnapshotV2,
   Section,
+  TreeNode,
 } from "../types/projectV2";
 import { CURRENT_PROJECT_SCHEMA_VERSION_V2 } from "../types/projectV2";
 import type { Snapshot } from "../types/snapshot";
@@ -188,6 +189,30 @@ function parseScreenTreeIndex(input: unknown, path: string): ParseResult<Record<
   return parseOk(out);
 }
 
+function parseTreeNodesById(input: unknown, path: string): ParseResult<Record<string, TreeNode>> {
+  if (input === undefined) return parseOk({});
+  if (!isRecord(input)) return parseFail(`${path} must be an object`);
+  const result: Record<string, TreeNode> = {};
+  for (const [key, raw] of Object.entries(input)) {
+    if (!isRecord(raw)) return parseFail(`${path}["${key}"] must be an object`);
+    const { id, kind, parentId, childrenIds } = raw as Record<string, unknown>;
+    if (typeof id !== "string" || id !== key) return parseFail(`${path}["${key}"].id must match key`);
+    if (!["screen_root", "state_section", "free_layer"].includes(kind as string)) {
+      return parseFail(`${path}["${key}"].kind must be one of screen_root/state_section/free_layer`);
+    }
+    if (parentId !== null && typeof parentId !== "string") return parseFail(`${path}["${key}"].parentId must be null or string`);
+    if (!Array.isArray(childrenIds)) return parseFail(`${path}["${key}"].childrenIds must be an array`);
+    result[key] = raw as unknown as TreeNode;
+  }
+  // Validate parent references exist within tree
+  for (const [nodeId, node] of Object.entries(result)) {
+    if (node.parentId && !result[node.parentId]) {
+      return parseFail(`${path}["${nodeId}"].parentId "${node.parentId}" does not exist in tree`);
+    }
+  }
+  return parseOk(result);
+}
+
 function assertRecordMatches(
   actual: Record<string, unknown>,
   expected: Record<string, unknown>,
@@ -205,62 +230,12 @@ function assertRecordMatches(
 }
 
 function applyAndValidateSectionIndexes(
-  input: Record<string, unknown>,
   core: ProjectSnapshotCore,
   path: string,
 ): ParseResult<ProjectSnapshotCore> {
-  let derived = syncSectionIndexes(core);
-
-  if (input.sectionsById !== undefined) {
-    const rawSections = isRecord(input.sectionsById) ? Object.values(input.sectionsById) : [];
-    const isLegacyStateNodeSections = rawSections.some((raw) => isRecord(raw) && typeof raw.stateId === "string" && raw.stateId.startsWith("state-node-"));
-    if (isLegacyStateNodeSections) return parseOk(derived);
-    const sectionsResult = parseRecord<Section>(
-      input.sectionsById,
-      `${path}.sectionsById`,
-      parseSection,
-      (section) => section.id,
-    );
-    if (!sectionsResult.ok) return sectionsResult;
-    derived = syncSectionIndexes({ ...core, sectionsById: sectionsResult.value });
-    const expectedById = derived.sectionsById;
-    const actualComparable = Object.fromEntries(
-      Object.entries(sectionsResult.value).map(([id, section]) => [
-        id,
-        { ...section, name: expectedById[id]?.name ?? section.name },
-      ]),
-    );
-    const expectedComparable = Object.fromEntries(
-      Object.entries(expectedById).map(([id, section]) => [id, { ...section, name: section.name }]),
-    );
-    const compare = assertRecordMatches(actualComparable, expectedComparable, `${path}.sectionsById`);
-    if (!compare.ok) return compare;
-    derived.sectionsById = sectionsResult.value;
-  }
-
-  if (input.sectionOrderByScreenId !== undefined) {
-    const parsed = parseStringArrayRecord(input.sectionOrderByScreenId, `${path}.sectionOrderByScreenId`);
-    if (!parsed.ok) return parsed;
-    const compare = assertRecordMatches(parsed.value, derived.sectionOrderByScreenId, `${path}.sectionOrderByScreenId`);
-    if (!compare.ok) return compare;
-  }
-  if (input.sectionIdByStateId !== undefined) {
-    if (!isRecord(input.sectionIdByStateId)) return parseFail(`${path}.sectionIdByStateId must be an object`);
-    const compare = assertRecordMatches(input.sectionIdByStateId, derived.sectionIdByStateId, `${path}.sectionIdByStateId`);
-    if (!compare.ok) return compare;
-  }
-  if (input.screenTreeByScreenId !== undefined) {
-    const parsed = parseScreenTreeIndex(input.screenTreeByScreenId, `${path}.screenTreeByScreenId`);
-    if (!parsed.ok) return parsed;
-    const compare = assertRecordMatches(parsed.value, derived.screenTreeByScreenId, `${path}.screenTreeByScreenId`);
-    if (!compare.ok) return compare;
-  }
-  if (input.screenIdByRootWidgetId !== undefined) {
-    if (!isRecord(input.screenIdByRootWidgetId)) return parseFail(`${path}.screenIdByRootWidgetId must be an object`);
-    const compare = assertRecordMatches(input.screenIdByRootWidgetId, derived.screenIdByRootWidgetId, `${path}.screenIdByRootWidgetId`);
-    if (!compare.ok) return compare;
-  }
-
+  // Derive all indexes from the tree (or derive tree from nav map if tree is empty).
+  // This is a one-way path: tree → derived indexes.
+  const derived = syncSectionIndexes(core);
   return parseOk(derived);
 }
 
@@ -340,6 +315,9 @@ function parseProjectSnapshotCore(
     }
   }
 
+  const treeNodesResult = parseTreeNodesById(input.treeNodesById, `${path}.treeNodesById`);
+  if (!treeNodesResult.ok) return treeNodesResult;
+
   const coreWithoutSections: ProjectSnapshotCore = {
     schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION_V2,
     projectName,
@@ -347,7 +325,7 @@ function parseProjectSnapshotCore(
     stateBoardsById: stateBoardsResult.value,
     variantsById: variantsResult.value,
     widgetsById: widgetsResult.value,
-    treeNodesById: {},
+    treeNodesById: treeNodesResult.value,
     sectionsById: {},
     sectionOrderByScreenId: {},
     sectionIdByStateId: {},
@@ -362,7 +340,7 @@ function parseProjectSnapshotCore(
     canvasSnap: parseCanvasSnap(input.canvasSnap),
   };
 
-  const sectionResult = applyAndValidateSectionIndexes(input, coreWithoutSections, path);
+  const sectionResult = applyAndValidateSectionIndexes(coreWithoutSections, path);
   if (!sectionResult.ok) return sectionResult;
 
   const crossRefResult = runProjectV2CrossRefChecks({
@@ -370,6 +348,7 @@ function parseProjectSnapshotCore(
     stateBoardsById: stateBoardsResult.value,
     variantsById: variantsResult.value,
     widgetsById: widgetsResult.value,
+    treeNodesById: sectionResult.value.treeNodesById,
     sectionsById: sectionResult.value.sectionsById,
     sectionOrderByScreenId: sectionResult.value.sectionOrderByScreenId,
     sectionIdByStateId: sectionResult.value.sectionIdByStateId,

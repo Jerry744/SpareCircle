@@ -8,7 +8,7 @@ import type { WidgetNode } from "../types/widget";
 import type { NavigationMap } from "../types/navigationMap";
 import type { StateBoard } from "../types/stateBoard";
 import type { Variant } from "../types/variant";
-import type { Section, ScreenTreeIndex } from "../types/projectV2";
+import type { Section, ScreenTreeIndex, TreeNode } from "../types/projectV2";
 import type { ScreenGroup } from "../types/screenGroup";
 import type { TransitionEventBinding } from "../types/eventBinding";
 
@@ -17,6 +17,7 @@ export interface ProjectV2CrossRefInput {
   stateBoardsById: Record<string, StateBoard>;
   variantsById: Record<string, Variant>;
   widgetsById: Record<string, WidgetNode>;
+  treeNodesById: Record<string, TreeNode>;
   sectionsById: Record<string, Section>;
   sectionOrderByScreenId: Record<string, string[]>;
   sectionIdByStateId: Record<string, string>;
@@ -201,6 +202,38 @@ function checkSections(input: ProjectV2CrossRefInput): CrossRefResult {
   return { ok: true };
 }
 
+// Tree structure invariants
+function checkTreeInvariants(input: ProjectV2CrossRefInput): CrossRefResult {
+  const { treeNodesById, widgetsById } = input;
+  if (Object.keys(treeNodesById).length === 0) return { ok: true };
+
+  const screenRoots: string[] = [];
+  for (const [nodeId, node] of Object.entries(treeNodesById)) {
+    if (node.kind === "screen_root") {
+      screenRoots.push(nodeId);
+      if (node.parentId !== null) return fail(`Tree node "${nodeId}" (screen_root) must have parentId null`);
+    }
+    if (node.kind === "state_section") {
+      const parent = treeNodesById[node.parentId ?? ""];
+      if (!parent || parent.kind !== "screen_root") {
+        return fail(`Tree node "${nodeId}" (state_section) parentId must point to a screen_root`);
+      }
+    }
+  }
+  if (screenRoots.length === 0) return fail("Must have at least one screen_root tree node");
+
+  for (const node of Object.values(treeNodesById)) {
+    if (node.kind !== "state_section") continue;
+    let canonicalCount = 0;
+    for (const childId of node.childrenIds) {
+      const widget = widgetsById[childId];
+      if (widget?.frameRole === "canonical") canonicalCount += 1;
+    }
+    if (canonicalCount > 1) return fail(`StateSection "${node.id}" has more than one canonical frame`);
+  }
+  return { ok: true };
+}
+
 // INV-6, INV-7, INV-8: binding integrity.
 function checkTransitionEventBindings(input: ProjectV2CrossRefInput): CrossRefResult {
   const { navigationMap, transitionEventBindings, widgetsById } = input;
@@ -282,6 +315,7 @@ export function runProjectV2CrossRefChecks(input: ProjectV2CrossRefInput): Cross
     checkVariantRootWidget,
     checkWidgetTree,
     checkSections,
+    checkTreeInvariants,
     checkTransitionEventBindings,
     checkScreenGroupMembership,
   ];

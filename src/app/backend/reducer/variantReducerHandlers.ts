@@ -442,10 +442,35 @@ export function handleMoveVariantWidget(
   if (sourceSection && !sameParent) sectionsById[sourceSection.id] = { ...sourceSection, draftNodeIds: nextSourceChildren };
   if (targetSection) sectionsById[targetSection.id] = { ...targetSection, draftNodeIds: nextTargetChildren };
 
+  // Also update treeNodesById for section children
+  const treeNodesById = project.treeNodesById ? { ...project.treeNodesById } : {};
+  let treeChanged = false;
+  if (sourceSectionId) {
+    const srcNode = treeNodesById[sourceSectionId];
+    if (srcNode && srcNode.kind === "state_section") {
+      const nextIds = srcNode.childrenIds.filter((cid) => cid !== widget.id);
+      if (nextIds.length !== srcNode.childrenIds.length) {
+        treeNodesById[sourceSectionId] = { ...srcNode, childrenIds: nextIds };
+        treeChanged = true;
+      }
+    }
+  }
+  if (targetSection && targetSection.id !== sourceSectionId) {
+    const tgtNode = treeNodesById[targetSection.id];
+    if (tgtNode && tgtNode.kind === "state_section") {
+      const nextIds = tgtNode.childrenIds.includes(widget.id)
+        ? tgtNode.childrenIds
+        : [...tgtNode.childrenIds, widget.id];
+      treeNodesById[targetSection.id] = { ...tgtNode, childrenIds: nextIds };
+      treeChanged = true;
+    }
+  }
+
   const next: ProjectSnapshotV2 = {
     ...project,
     sectionsById,
     widgetsById,
+    ...(treeChanged ? { treeNodesById } : {}),
   };
   return touchVariant(touchVariant(next, owningVariantId, action.now), targetVariantId, action.now);
 }

@@ -6,7 +6,7 @@ import type { WidgetNode } from "../types/widget";
 import type { StateBoard } from "../types/stateBoard";
 import type { Variant } from "../types/variant";
 import type { NavigationMap, StateNode } from "../types/navigationMap";
-import type { ProjectSnapshotV2 } from "../types/projectV2";
+import type { ProjectSnapshotV2, TreeNode, ScreenRootNode, StateSectionNode } from "../types/projectV2";
 import { CURRENT_PROJECT_SCHEMA_VERSION_V2 } from "../types/projectV2";
 import { DEFAULT_NAV_MAP_VIEWPORT } from "../types/navigationMap";
 import { DEFAULT_STATE_BOARD_META } from "../types/stateBoard";
@@ -90,6 +90,33 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
     updatedAt: createdAt,
   };
 
+  const screenRootNode: ScreenRootNode = {
+    id: screenRootId,
+    kind: "screen_root",
+    parentId: null,
+    childrenIds: [sectionId],
+  };
+
+  const stateSectionNode: StateSectionNode = {
+    id: sectionId,
+    kind: "state_section",
+    parentId: screenRootId,
+    childrenIds: [rootWidgetId],
+    screenId,
+    stateId: variantId,
+    name: "Canonical Section",
+    sectionId,
+    x: 0, y: 0,
+    width: DEFAULT_STATE_BOARD_META.width,
+    height: DEFAULT_STATE_BOARD_META.height,
+    layoutMode: "auto",
+  };
+
+  const treeNodes: Record<string, TreeNode> = {
+    [screenRootId]: screenRootNode,
+    [sectionId]: stateSectionNode,
+  };
+
   return syncSectionIndexes({
     schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION_V2,
     projectName: options.projectName?.trim() || DEFAULT_PROJECT_NAME,
@@ -97,7 +124,7 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
     stateBoardsById: { [boardId]: stateBoard },
     variantsById: { [variantId]: variant },
     widgetsById: { [rootWidgetId]: rootWidget },
-    treeNodesById: {},
+    treeNodesById: treeNodes,
     transitionEventBindings: {},
     screenGroups: {},
     screenGroupOrder: [],

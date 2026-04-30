@@ -55,8 +55,7 @@ export type TreeNode = ScreenRootNode | StateSectionNode | FreeLayerNode;
 
 // ── Section (deprecated, use StateSection) ──
 
-/** @deprecated Use StateSection instead. */
-export interface Section {
+export interface StateSection {
   id: string;
   screenId: string;
   stateId: string;
@@ -66,8 +65,8 @@ export interface Section {
   order: number;
 }
 
-/** T5.2: Section renamed to StateSection. */
-export type StateSection = Section;
+/** @deprecated Use StateSection instead. Will be removed in a future version. */
+export type Section = StateSection;
 
 export interface ScreenTreeIndex {
   rootWidgetIds: string[];
