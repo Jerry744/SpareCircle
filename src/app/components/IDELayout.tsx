@@ -112,7 +112,7 @@ function IDELayoutInner() {
       : undefined;
   const resolvedStateBoardSelection =
     current.level === "board"
-      ? stateBoardSelection ?? { kind: "screen", variantIds: [current.variantId] }
+      ? stateBoardSelection ?? { kind: "screen", variantIds: [] }
       : null;
 
   const commitV2Project = useCallback((update: (project: ProjectSnapshotV2) => ProjectSnapshotV2, options?: { historyMode?: "merge" }) => {
@@ -275,7 +275,7 @@ function IDELayoutInner() {
     if (current.level !== "board" || !currentBoard) return;
     setStateBoardSelection((prev) => {
       if (!prev) {
-        return { kind: "screen", variantIds: [current.variantId] };
+        return { kind: "screen", variantIds: [] };
       }
       if (prev.kind === "screen") {
         const variantIds = prev.variantIds.filter((variantId) => currentBoard.variantIds.includes(variantId));
@@ -501,7 +501,7 @@ function IDELayoutInner() {
                     project: navMapProject,
                     board: currentBoard,
                     selectedVariantId: current.variantId,
-                    selection: resolvedStateBoardSelection ?? { kind: "screen", variantIds: [current.variantId] },
+                    selection: resolvedStateBoardSelection ?? { kind: "screen", variantIds: [] },
                     onVariantAction: handleVariantAction,
                   }
                 : undefined

@@ -3,7 +3,7 @@ import { createEmptyProjectV2, parseProjectSnapshotV2 } from "../validation";
 import { variantReducer } from "../reducer/variantReducer";
 import { cloneVariant } from "../stateBoard/variantCloning";
 import { reassignCanonicalAfterMutation } from "../stateBoard/variantHelpers";
-import type { ProjectSnapshotV2 } from "../types/projectV2";
+import type { ProjectSnapshotV2, StateSectionNode } from "../types/projectV2";
 import type { WidgetNode } from "../types/widget";
 
 const NOW = "2026-04-23T10:00:00.000Z";
@@ -84,6 +84,10 @@ describe("variantReducer", () => {
     expect(blank.sectionsById["section-root"].canonicalFrameId).toBe("screen-root");
     expect(blank.sectionsById["section-blank"].canonicalFrameId).toBe("blank-root");
     expect(blank.sectionsById["section-blank"].draftNodeIds).toEqual([]);
+    // Tree consistency: draftNodeIds matches tree children minus canonical
+    const blankSection = blank.treeNodesById?.["section-blank"] as StateSectionNode | undefined;
+    expect(blankSection).toBeDefined();
+    expect(blankSection.childrenIds).toContain("blank-root");
 
     const copied = variantReducer(blank, {
       type: "duplicateVariant",
@@ -94,6 +98,10 @@ describe("variantReducer", () => {
     });
     expect(copied.variantsById["variant-copy"].rootWidgetId).not.toBe("screen-root");
     expect(copied.sectionsById["section-copy"].canonicalFrameId).toBe(copied.variantsById["variant-copy"].rootWidgetId);
+    // Tree consistency: duplicated variant gets a state_section node
+    const copySection = copied.treeNodesById?.["section-copy"] as StateSectionNode | undefined;
+    expect(copySection).toBeDefined();
+    expect(copySection.childrenIds).toContain(copied.variantsById["variant-copy"].rootWidgetId);
     expect(parseProjectSnapshotV2(copied).ok).toBe(true);
   });
 
@@ -409,6 +417,10 @@ describe("variantReducer", () => {
     expect(duplicated.variantsById["variant-root"].rootWidgetId).toBe("screen-root");
     expect(duplicated.sectionsById["section-root"].canonicalFrameId).toBe("screen-root");
     expect(duplicated.sectionsById["section-root"].draftNodeIds).toContain("draft-frame-root");
+    // Tree: childrenIds must contain the new draft frame
+    const dupSection = duplicated.treeNodesById?.["section-root"] as StateSectionNode | undefined;
+    expect(dupSection).toBeDefined();
+    expect(dupSection.childrenIds).toContain("draft-frame-root");
     expect(duplicated.widgetsById["draft-frame-root"]).toMatchObject({
       type: "Screen",
       parentId: null,
@@ -431,6 +443,10 @@ describe("variantReducer", () => {
     expect(moved.widgetsById["button-a"].parentId).toBeNull();
     expect(moved.widgetsById["screen-root"].childrenIds).toEqual([]);
     expect(moved.sectionsById["section-root"].draftNodeIds).toEqual(["button-a"]);
+    // Tree consistency: widget moves under section root should appear in childrenIds
+    const movedSection = moved.treeNodesById?.["section-root"] as StateSectionNode | undefined;
+    expect(movedSection).toBeDefined();
+    expect(movedSection.childrenIds).toContain("button-a");
     expect(parseProjectSnapshotV2(moved).ok).toBe(true);
   });
 
@@ -450,6 +466,10 @@ describe("variantReducer", () => {
     });
     expect(deletedDraft.widgetsById["draft-frame-root"]).toBeUndefined();
     expect(deletedDraft.sectionsById["section-root"].draftNodeIds).not.toContain("draft-frame-root");
+    // Tree consistency: deleted draft removed from childrenIds
+    const deletedSection = deletedDraft.treeNodesById?.["section-root"] as StateSectionNode | undefined;
+    expect(deletedSection).toBeDefined();
+    expect(deletedSection.childrenIds).not.toContain("draft-frame-root");
     expect(parseProjectSnapshotV2(deletedDraft).ok).toBe(true);
 
     const deletedWidget = variantReducer(makeFixture(), {

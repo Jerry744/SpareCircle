@@ -4,6 +4,7 @@ import { variantReducer } from "../variantReducer";
 import { makeSectionId, makeScreenRootId } from "../../stateBoard/sectionModel";
 import type { ProjectSnapshotV2, StateSectionNode, ScreenRootNode } from "../../types/projectV2";
 import type { WidgetNode } from "../../types/widget";
+import { navigationMapReducer } from "../navigationMapReducer";
 
 const NOW = "2026-04-23T10:00:00.000Z";
 
@@ -120,6 +121,46 @@ describe("tree - createVariant adds section to tree", () => {
     expect(root).toBeDefined();
     const sectionId = makeSectionId("variant-second");
     expect(root.childrenIds).toContain(sectionId);
+  });
+
+  it("uses screen-group scope for ScreenRootNode when state node is grouped", () => {
+    const grouped = navigationMapReducer(
+      {
+        ...makeFixture(),
+        screenGroups: {
+          "screen-group-home": {
+            id: "screen-group-home",
+            name: "Home",
+            color: "#ff0000",
+            stateNodeIds: [],
+          },
+        },
+        screenGroupOrder: ["screen-group-home"],
+      },
+      {
+        type: "assignStateNodeGroup",
+        stateNodeId: "state-node-alpha",
+        screenGroupId: "screen-group-home",
+      },
+    );
+    const boardId = grouped.stateBoardsById[Object.keys(grouped.stateBoardsById)[0]]?.id ?? "";
+    const result = variantReducer(grouped, {
+      type: "createVariant",
+      boardId,
+      mode: "blank",
+      name: "Grouped Variant",
+      variantId: "variant-grouped",
+      now: NOW,
+    });
+    const groupedRootId = makeScreenRootId("screen-group-home");
+    const legacyRootId = makeScreenRootId("state-node-alpha");
+    const sectionId = makeSectionId("variant-grouped");
+    const groupedRoot = result.treeNodesById[groupedRootId] as ScreenRootNode | undefined;
+    expect(groupedRoot).toBeDefined();
+    expect(groupedRoot?.childrenIds).toContain(sectionId);
+    const legacyRoot = result.treeNodesById[legacyRootId] as ScreenRootNode | undefined;
+    expect(legacyRoot ? legacyRoot.childrenIds : []).not.toContain(sectionId);
+    expect((result.treeNodesById[sectionId] as StateSectionNode).screenId).toBe("screen-group-home");
   });
 });
 

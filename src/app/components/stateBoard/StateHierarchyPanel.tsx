@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Copy, Eye, EyeOff, FolderOpen, Monitor, Plus, Star, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Eye, EyeOff, FolderOpen, Plus, Star, Trash2 } from "lucide-react";
 import type { VariantAction } from "../../backend/reducer/variantActions";
 import type { ProjectSnapshotV2, StateSectionNode } from "../../backend/types/projectV2";
 import type { StateBoard } from "../../backend/types/stateBoard";
@@ -95,6 +95,10 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
   const { project, board, activeVariantId, selection, onSelectVariant, onSelectionChange, onVariantAction } = context;
   const storageKey = useMemo(() => getStorageKey(project, board), [project.projectName, board.id]);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>(() => readExpandedState(storageKey));
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
+  const [sectionRenameValue, setSectionRenameValue] = useState("");
   const [dragging, setDragging] = useState<DragSource | null>(null);
   const [dropTarget, setDropTarget] = useState<{ key: string; position: DropPosition } | null>(null);
   const rangeAnchorRef = useRef<string | null>(null);
@@ -119,8 +123,6 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
         const stateSection = treeNode as StateSectionNode;
         const variant = project.variantsById[stateSection.stateId];
         if (!variant) return null;
-        const section = project.sectionsById[stateSection.sectionId];
-        if (!section) return null;
 
         const frames: SectionFrame[] = [];
         for (const childId of stateSection.childrenIds) {
@@ -135,7 +137,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
         return frames.length > 0 ? { variant, sectionId: stateSection.sectionId, frames } : null;
       })
       .filter((item): item is SectionGroup => Boolean(item));
-  }, [project.treeNodesById, project.variantsById, project.widgetsById, project.sectionsById, project.navigationMap.stateNodes, board.stateNodeId]);
+  }, [project.treeNodesById, project.variantsById, project.widgetsById, project.navigationMap.stateNodes, board.stateNodeId]);
 
   const selectedFrameRootIdsByVariant = useMemo(() => {
     const result: Record<string, Set<string>> = {};
@@ -249,7 +251,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     rangeAnchorRef.current = widgetId;
   };
 
-  const performScreenReorder = (sourceVariantId: string, targetVariantId: string, position: DropPosition) => {
+  const performFrameReorder = (sourceVariantId: string, targetVariantId: string, position: DropPosition) => {
     if (sourceVariantId === targetVariantId || position === "inside") return;
     const orderedIds = board.variantIds.filter((id) => id !== sourceVariantId);
     const targetIndex = orderedIds.indexOf(targetVariantId);
@@ -276,19 +278,22 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     });
   };
   const performWidgetMoveToSection = (sourceWidgetId: string, sectionId: string) => {
-    const section = project.sectionsById[sectionId];
-    if (!section || section.draftNodeIds.includes(sourceWidgetId)) return;
-    onVariantAction({ type: "moveVariantWidget", widgetId: sourceWidgetId, targetParentId: sectionId, targetIndex: section.draftNodeIds.length });
+    const section = project.treeNodesById[sectionId];
+    if (!section || section.kind !== "state_section") return;
+    const stateSection = section as StateSectionNode;
+    if (stateSection.childrenIds.includes(sourceWidgetId)) return;
+    onVariantAction({ type: "moveVariantWidget", widgetId: sourceWidgetId, targetParentId: sectionId, targetIndex: stateSection.childrenIds.length });
   };
 
   const renderWidget = (widget: TreeNode, variant: Variant, root: TreeNode, depth: number, sectionId: string, isCanonicalFrame: boolean) => {
     const isRoot = widget.id === root.id;
-    const isScreenRoot = isRoot && widget.type === "Screen";
+    const isFrameRoot = isRoot && widget.type === "Screen";
     const hasChildren = widget.children.length > 0;
     const expanded = isRoot ? true : expandedIds[widget.id] ?? true;
     const variantVisibleIds = collectVisibleIds(root, expandedIds).filter((id) => id !== root.id);
-    const isActiveScreen = isScreenRoot && variant.id === activeVariantId && widget.id === variant.rootWidgetId;
-    const isCanonicalFrameRoot = isScreenRoot && isCanonicalFrame && board.canonicalVariantId === variant.id;
+    const isActiveScreen = isFrameRoot && variant.id === activeVariantId && widget.id === variant.rootWidgetId;
+    const isCanonicalFrameRoot = isFrameRoot && isCanonicalFrame;
+    const isBoardCanonical = board.canonicalVariantId === variant.id;
     const isSelected = isRoot
       ? (
           getSelectedWidgetIdsForVariant(selection, variant.id).includes(widget.id) ||
@@ -339,14 +344,14 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
             const source = dragging;
             if (!source || (source.kind === "widget" && source.widgetId === widget.id)) return;
             event.preventDefault();
-            const position = isScreenRoot && source.kind === "screen" ? resolveDropPosition({ ...widget, type: "Label" }, event) : resolveDropPosition(widget, event);
+            const position = isFrameRoot && source.kind === "screen" ? resolveDropPosition({ ...widget, type: "Label" }, event) : resolveDropPosition(widget, event);
             setDropTarget({ key: widget.id, position });
           }}
           onDrop={(event) => {
             event.preventDefault();
             const source = dragging;
             const position = dropTarget?.key === widget.id ? dropTarget.position : resolveDropPosition(widget, event);
-            if (source?.kind === "screen" && isScreenRoot) performScreenReorder(source.variantId, variant.id, position);
+            if (source?.kind === "screen" && isFrameRoot) performFrameReorder(source.variantId, variant.id, position);
             if (source?.kind === "widget") performWidgetMove(source.widgetId, root, widget.id, position);
             clearDrag();
           }}
@@ -364,12 +369,47 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
               {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
           ) : (
-            <div className="w-5 flex items-center justify-center">{isScreenRoot ? <Monitor size={13} /> : null}</div>
+            <div className="w-5 flex items-center justify-center">
+              {isFrameRoot && isCanonicalFrameRoot ? (
+                <Star size={12} className="text-amber-300 fill-amber-300" />
+              ) : isFrameRoot ? (
+                <div className="w-2.5 h-2.5 border border-current rounded-[2px]" />
+              ) : null}
+            </div>
           )}
-          <span className="text-xs flex-1 truncate">{isRoot && isCanonicalFrame ? variant.name : widget.name}</span>
-          {isCanonicalFrameRoot && isRoot ? <Star size={12} className="text-amber-300 fill-amber-300" /> : null}
-          <span className="text-[10px] text-neutral-400">{isScreenRoot ? (isCanonicalFrameRoot ? "Canonical Frame" : "Draft Frame") : widget.type}</span>
-          {isScreenRoot ? (
+          {isFrameRoot && renamingId === widget.id ? (
+            <input
+              className="text-xs flex-1 bg-neutral-700 text-white px-1 py-0.5 rounded outline-none border border-highlight-500 min-w-0"
+              value={renameValue}
+              autoFocus
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={() => {
+                if (renameValue !== widget.name) {
+                  onVariantAction({ type: "renameWidget", widgetId: widget.id, name: renameValue });
+                }
+                setRenamingId(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (renameValue !== widget.name) {
+                    onVariantAction({ type: "renameWidget", widgetId: widget.id, name: renameValue });
+                  }
+                  setRenamingId(null);
+                }
+                if (e.key === "Escape") setRenamingId(null);
+              }}
+            />
+          ) : (
+            <span
+              className="text-xs flex-1 truncate cursor-text"
+              onDoubleClick={(e) => { e.stopPropagation(); setRenamingId(widget.id); setRenameValue(widget.name); }}
+            >
+              {widget.name}
+            </span>
+          )}
+          <span className="text-[10px] text-neutral-400">{isFrameRoot ? (isCanonicalFrameRoot ? "canonical" : "draft") : widget.type}</span>
+          {isFrameRoot ? (
             <button
               className="p-0.5 hover:bg-neutral-500 rounded text-neutral-300 opacity-0 group-hover:opacity-100"
               title="Duplicate frame"
@@ -441,29 +481,61 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
       </div>
       <div className="flex-1 overflow-y-auto p-2 group">
         {sectionGroups.map(({ variant, sectionId, frames }) => {
-          const section = project.sectionsById[sectionId];
-          return section ? (
-          <div key={section.id} className="mb-2">
+          const sectionNode = project.treeNodesById?.[sectionId];
+          if (!sectionNode || sectionNode.kind !== "state_section") return null;
+          const id = sectionNode.id;
+          return (
+          <div key={id} className="mb-2">
             <div
               className="flex items-center gap-1 rounded px-2 py-1 text-xs text-neutral-200"
               onDragOver={(event) => {
                 if (dragging?.kind !== "widget") return;
                 event.preventDefault();
-                setDropTarget({ key: section.id, position: "inside" });
+                setDropTarget({ key: id, position: "inside" });
               }}
               onDrop={(event) => {
                 event.preventDefault();
-                if (dragging?.kind === "widget") performWidgetMoveToSection(dragging.widgetId, section.id);
+                if (dragging?.kind === "widget") performWidgetMoveToSection(dragging.widgetId, id);
                 clearDrag();
               }}
             >
               <div className="w-5 flex items-center justify-center"><FolderOpen size={13} /></div>
-              <span className="min-w-0 flex-1 truncate font-medium">{section.name}</span>
+              {renamingSectionId === sectionId ? (
+                <input
+                  className="min-w-0 flex-1 text-xs font-medium bg-neutral-700 text-white px-1 py-0.5 rounded outline-none border border-highlight-500"
+                  value={sectionRenameValue}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setSectionRenameValue(e.target.value)}
+                  onBlur={() => {
+                    if (sectionRenameValue !== sectionNode.name) {
+                      onVariantAction({ type: "renameSection", sectionId, name: sectionRenameValue });
+                    }
+                    setRenamingSectionId(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      if (sectionRenameValue !== sectionNode.name) {
+                        onVariantAction({ type: "renameSection", sectionId, name: sectionRenameValue });
+                      }
+                      setRenamingSectionId(null);
+                    }
+                    if (e.key === "Escape") setRenamingSectionId(null);
+                  }}
+                />
+              ) : (
+                <span
+                  className="min-w-0 flex-1 truncate font-medium cursor-text"
+                  onDoubleClick={(e) => { e.stopPropagation(); setRenamingSectionId(sectionId); setSectionRenameValue(sectionNode.name); }}
+                >
+                  {sectionNode.name}
+                </span>
+              )}
               <span className="text-[10px] text-neutral-400">Section</span>
             </div>
             {frames.map(({ root, isCanonicalFrame }) => renderWidget(root, variant, root, 1, sectionId, isCanonicalFrame))}
           </div>
-          ) : null;
+          );
         })}
       </div>
     </div>

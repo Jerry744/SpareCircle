@@ -14,8 +14,33 @@ export function makeScreenRootId(screenId: string): string {
   return `${ID_PREFIX.screenRoot}-${screenId}`;
 }
 
-export function getScreenIdForStateNode(stateNode: StateNode): string {
+export function getScreenScopeId(stateNode: StateNode): string {
   return stateNode.screenGroupId ?? stateNode.id;
+}
+
+export function getScreenIdForStateNode(stateNode: StateNode): string {
+  return getScreenScopeId(stateNode);
+}
+
+export function ensureScreenRootForScope(
+  treeNodesById: Record<string, TreeNode>,
+  screenScopeId: string,
+  sectionId: string,
+): Record<string, TreeNode> {
+  const screenRootId = makeScreenRootId(screenScopeId);
+  const existingRootNode = treeNodesById[screenRootId];
+  const childrenIds = existingRootNode?.kind === "screen_root"
+    ? [...(existingRootNode as ScreenRootNode).childrenIds, sectionId]
+    : [sectionId];
+  return {
+    ...treeNodesById,
+    [screenRootId]: {
+      id: screenRootId,
+      kind: "screen_root",
+      parentId: null,
+      childrenIds,
+    } as ScreenRootNode,
+  };
 }
 
 /** Resolve a node ID from treeNodesById first, then widgetsById. */
@@ -30,7 +55,9 @@ export function getScreenRootNode<T extends ProjectSnapshotCore>(project: T, scr
   return node?.kind === "screen_root" ? (node as ScreenRootNode) : undefined;
 }
 
-/** Get the canonical + draft frame root widget IDs for a StateSection. */
+/** Get the canonical + draft frame root widget IDs for a StateSection.
+ *  Note: Frame roots are Widget type "Screen" — this is the implementation
+ *  detail that carries the frame semantics, not a reference to state machine Screen. */
 export function getStateSectionFrameBuckets<T extends ProjectSnapshotCore>(
   project: T,
   stateSectionId: string,
@@ -56,8 +83,9 @@ export function deriveSectionIndexes<T extends ProjectSnapshotCore>(project: T):
   const treeNodesById: Record<string, TreeNode> = {};
   const screenRootIds = new Set<string>();
 
-  // Phase 1: walk the nav map to ensure every variant has a section entry.
-  // Populate treeNodesById for any variant that doesn't already have one.
+  // Phase 1: walk the nav map and derive section indexes from existing tree nodes.
+  // Variants without a state_section tree node are skipped — tree creation happens
+  // only in reducer handlers (handleCreateVariant).
   let order = 0;
   project.navigationMap.stateNodeOrder.forEach((stateNodeId) => {
     const stateNode = project.navigationMap.stateNodes[stateNodeId];
@@ -74,49 +102,29 @@ export function deriveSectionIndexes<T extends ProjectSnapshotCore>(project: T):
       const sectionId = makeSectionId(variant.id);
       const existingTreeNode = project.treeNodesById?.[sectionId];
 
-      if (existingTreeNode?.kind === "state_section") {
-        const stateSection = existingTreeNode as StateSectionNode;
-        const draftNodeIds = stateSection.childrenIds.filter(
-          (cid) => cid !== variant.rootWidgetId && Boolean(project.widgetsById[cid]),
-        );
-        sectionsById[sectionId] = {
-          id: sectionId,
-          screenId: stateSection.screenId,
-          stateId: stateSection.stateId,
-          name: stateSection.name,
-          canonicalFrameId: variant.rootWidgetId,
-          draftNodeIds,
-          order,
-        };
-        treeNodesById[sectionId] = stateSection;
-      } else {
-        sectionsById[sectionId] = {
-          id: sectionId,
-          screenId,
-          stateId: variant.id,
-          name: `${variant.name} Section`,
-          canonicalFrameId: variant.rootWidgetId,
-          draftNodeIds: [],
-          order,
-        };
-        treeNodesById[sectionId] = {
-          id: sectionId,
-          kind: "state_section",
-          parentId: screenRootId,
-          childrenIds: [variant.rootWidgetId],
-          screenId,
-          stateId: variant.id,
-          name: `${variant.name} Section`,
-          sectionId,
-          x: 0, y: 0, width: 320, height: 480,
-          layoutMode: "auto",
-        } as StateSectionNode;
-      }
+      if (existingTreeNode?.kind !== "state_section") continue;
+      const stateSection = existingTreeNode as StateSectionNode;
+      // Children that are not the canonical root are draft frames.
+      // All children are type "Screen" (frame roots in widget tree).
+      const draftNodeIds = stateSection.childrenIds.filter(
+        (cid) => cid !== variant.rootWidgetId && Boolean(project.widgetsById[cid]),
+      );
+      sectionsById[sectionId] = {
+        id: sectionId,
+        screenId: stateSection.screenId,
+        stateId: stateSection.stateId,
+        name: stateSection.name,
+        canonicalFrameId: variant.rootWidgetId,
+        draftNodeIds,
+        order,
+      };
+      treeNodesById[sectionId] = stateSection;
 
       sectionIdByStateId[variant.id] = sectionId;
       sectionOrderByScreenId[screenId] = [...(sectionOrderByScreenId[screenId] ?? []), sectionId];
 
       const section = sectionsById[sectionId];
+      // type "Screen" here is the frame root implementation detail
       const draftScreenRootIds = section.draftNodeIds.filter(
         (nodeId) => project.widgetsById[nodeId]?.type === "Screen",
       );

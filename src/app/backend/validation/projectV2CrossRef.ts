@@ -202,6 +202,28 @@ function checkSections(input: ProjectV2CrossRefInput): CrossRefResult {
   return { ok: true };
 }
 
+// Tree ↔ derived consistency: draftNodeIds must match tree children + frameRole.
+function checkTreeDerivedConsistency(input: ProjectV2CrossRefInput): CrossRefResult {
+  const { treeNodesById, sectionsById, variantsById } = input;
+  for (const [sectionId, section] of Object.entries(sectionsById)) {
+    const treeNode = treeNodesById[sectionId];
+    if (!treeNode || treeNode.kind !== "state_section") {
+      return fail(`Section "${sectionId}" has no matching state_section in treeNodesById`);
+    }
+    const canonicalFrameId = section.canonicalFrameId;
+    const expectedDraftNodeIds = treeNode.childrenIds.filter(
+      (cid) => cid !== canonicalFrameId,
+    );
+    const actualDraftNodeIds = section.draftNodeIds;
+    if (JSON.stringify([...expectedDraftNodeIds].sort()) !== JSON.stringify([...actualDraftNodeIds].sort())) {
+      return fail(
+        `Section "${sectionId}".draftNodeIds [${actualDraftNodeIds}] does not match tree-derived [${expectedDraftNodeIds}]`,
+      );
+    }
+  }
+  return { ok: true };
+}
+
 // Tree structure invariants
 function checkTreeInvariants(input: ProjectV2CrossRefInput): CrossRefResult {
   const { treeNodesById, widgetsById } = input;
@@ -230,6 +252,13 @@ function checkTreeInvariants(input: ProjectV2CrossRefInput): CrossRefResult {
       if (widget?.frameRole === "canonical") canonicalCount += 1;
     }
     if (canonicalCount > 1) return fail(`StateSection "${node.id}" has more than one canonical frame`);
+  }
+
+  // Screen-type widgets must be frame roots (parentId === null)
+  for (const widget of Object.values(widgetsById)) {
+    if (widget.type === "Screen" && widget.parentId !== null) {
+      return fail(`Widget "${widget.id}" is of type "Screen" but has parentId "${widget.parentId}"; Screen widgets must be frame roots`);
+    }
   }
   return { ok: true };
 }
@@ -315,6 +344,7 @@ export function runProjectV2CrossRefChecks(input: ProjectV2CrossRefInput): Cross
     checkVariantRootWidget,
     checkWidgetTree,
     checkSections,
+    checkTreeDerivedConsistency,
     checkTreeInvariants,
     checkTransitionEventBindings,
     checkScreenGroupMembership,

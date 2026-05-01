@@ -9,7 +9,7 @@
  * - Use `touchVariant` when a mutation should refresh variant timestamps.
  * - Keep section index synchronization at reducer level via `syncIfChanged`.
  */
-import type { ProjectSnapshotV2, StateSectionNode } from "../types/projectV2";
+import type { ProjectSnapshotV2, StateSectionNode, ScreenRootNode, TreeNode } from "../types/projectV2";
 import type { StateBoard } from "../types/stateBoard";
 import type { Variant, VariantStatus } from "../types/variant";
 import type { WidgetNode } from "../types/widget";
@@ -18,7 +18,13 @@ import { DEFAULT_STATE_BOARD_META } from "../types/stateBoard";
 import { ID_PREFIX, makeId } from "../types/idPrefixes";
 import { cloneVariant } from "../stateBoard/variantCloning";
 import { reassignCanonicalAfterMutation } from "../stateBoard/variantHelpers";
-import { syncSectionIndexes, makeSectionId } from "../stateBoard/sectionModel";
+import {
+  syncSectionIndexes,
+  makeSectionId,
+  getScreenScopeId,
+  ensureScreenRootForScope,
+  makeScreenRootId,
+} from "../stateBoard/sectionModel";
 import { createWidgetNode } from "../widgets";
 import { touchVariant } from "./helpers";
 import type { VariantAction } from "./variantActions";
@@ -205,6 +211,11 @@ export function handleCreateVariant(
   const name = uniqueVariantName(project, board, action.name);
   const now = action.now ?? new Date().toISOString();
   const rootX = board.variantIds.length * (board.meta.width + 80);
+  // Derive screen root for tree node creation
+  const stateNode = project.navigationMap.stateNodes[board.stateNodeId];
+  const screenId = stateNode ? getScreenScopeId(stateNode) : board.stateNodeId;
+  const screenRootId = makeScreenRootId(screenId);
+
   if (action.mode !== "blank") {
     const sourceVariantId = action.mode === "copy_of" ? action.sourceVariantId : board.canonicalVariantId;
     if (!sourceVariantId || !project.variantsById[sourceVariantId]) return project;
@@ -217,24 +228,53 @@ export function handleCreateVariant(
       idPrefix: action.rootWidgetId,
     });
     const movedRoot = newVariant.rootWidgetId ? newWidgets[newVariant.rootWidgetId] : undefined;
-    if (movedRoot) newWidgets[movedRoot.id] = { ...movedRoot, x: rootX, y: 0, width: board.meta.width, height: board.meta.height };
+    if (movedRoot) newWidgets[movedRoot.id] = { ...movedRoot, x: rootX, y: 0, width: board.meta.width, height: board.meta.height, frameRole: "canonical" };
+
+    // Tree: create StateSectionNode under existing ScreenRootNode
+    const sectionId = makeSectionId(variantId);
+    const treeWithRoot = ensureScreenRootForScope(project.treeNodesById, screenId, sectionId);
+    const clonedRootWidgetId = newVariant.rootWidgetId;
+    const treeNodesById: Record<string, TreeNode> = {
+      ...project.treeNodesById,
+      ...treeWithRoot,
+      [sectionId]: {
+        id: sectionId, kind: "state_section", parentId: screenRootId,
+        childrenIds: clonedRootWidgetId ? [clonedRootWidgetId] : [],
+        screenId, stateId: variantId, name: `${name} Section`, sectionId,
+        x: 0, y: 0, width: board.meta.width, height: board.meta.height, layoutMode: "auto",
+      } as StateSectionNode,
+    };
     return {
       ...project,
       stateBoardsById: { ...project.stateBoardsById, [board.id]: { ...board, variantIds: [...board.variantIds, variantId] } },
       variantsById: { ...project.variantsById, [variantId]: newVariant },
       widgetsById: { ...project.widgetsById, ...newWidgets },
+      treeNodesById,
     };
   }
   const rootWidgetId = action.rootWidgetId ?? `${variantId}-root`;
   const variant: Variant = { id: variantId, boardId: board.id, name, status: "draft", rootWidgetId, createdAt: now, updatedAt: now };
+
+  // Tree: create StateSectionNode under existing ScreenRootNode
+  const sectionId = makeSectionId(variantId);
+  const treeWithRoot = ensureScreenRootForScope(project.treeNodesById, screenId, sectionId);
+  const treeNodesById: Record<string, TreeNode> = {
+    ...treeWithRoot,
+    [sectionId]: {
+      id: sectionId, kind: "state_section", parentId: screenRootId, childrenIds: [rootWidgetId],
+      screenId, stateId: variantId, name: `${name} Section`, sectionId,
+      x: 0, y: 0, width: board.meta.width, height: board.meta.height, layoutMode: "auto",
+    } as StateSectionNode,
+  };
   return {
     ...project,
     stateBoardsById: { ...project.stateBoardsById, [board.id]: { ...board, variantIds: [...board.variantIds, variantId] } },
     variantsById: { ...project.variantsById, [variantId]: variant },
-    widgetsById: {
-      ...project.widgetsById,
-      [rootWidgetId]: { ...makeRootFromMeta(rootWidgetId, name, board.meta.width, board.meta.height), x: rootX },
-    },
+      widgetsById: {
+        ...project.widgetsById,
+        [rootWidgetId]: { ...makeRootFromMeta(rootWidgetId, name, board.meta.width, board.meta.height), x: rootX, frameRole: "canonical" },
+      },
+    treeNodesById,
   };
 }
 
@@ -326,11 +366,26 @@ export function handleDeleteVariant(
     variant.id === board.canonicalVariantId ? { ...nextBoard, canonicalVariantId: variant.id } : nextBoard,
     nextVariantIds.map((id) => variantsById[id]).filter((item): item is Variant => Boolean(item)),
   );
+
+  // Clean up tree node for deleted variant
+  const sectionId = makeSectionId(variant.id);
+  const treeNodesById = { ...project.treeNodesById };
+  delete treeNodesById[sectionId];
+  for (const [nodeId, node] of Object.entries(treeNodesById)) {
+    if (node.kind === "screen_root" && (node as ScreenRootNode).childrenIds.includes(sectionId)) {
+      treeNodesById[nodeId] = {
+        ...node,
+        childrenIds: (node as ScreenRootNode).childrenIds.filter((cid) => cid !== sectionId),
+      };
+    }
+  }
+
   return {
     ...project,
     stateBoardsById: { ...project.stateBoardsById, [board.id]: { ...nextBoard, canonicalVariantId: reassigned.canonicalVariantId } },
     variantsById,
     widgetsById: pruneWidgetSubtree(project.widgetsById, variant.rootWidgetId),
+    treeNodesById,
   };
 }
 
@@ -414,6 +469,7 @@ export function handleMoveVariantWidget(
   const targetVariant = project.variantsById[targetVariantId];
   if (!owningVariant || !targetVariant || owningVariant.boardId !== targetVariant.boardId) return project;
   if (widget.id === owningVariant.rootWidgetId) return project;
+  if (widget.type === "Screen") return project;
 
   const sourceParent = widget.parentId ? project.widgetsById[widget.parentId] : null;
   const sourceSectionId = widget.parentId ? null : findSectionIdForRoot(project, widget.id);
@@ -571,7 +627,7 @@ export function handleDuplicateVariantWidgets(
   if (!variant) return project;
   const variantWidgetIds = collectVariantWidgetIds(project, variant.id);
   const roots = filterTopLevelWidgetIds(project, action.widgetIds)
-    .filter((widgetId) => variantWidgetIds.has(widgetId));
+    .filter((widgetId) => variantWidgetIds.has(widgetId) && project.widgetsById[widgetId]?.type !== "Screen");
   if (roots.length === 0) return project;
 
   const targetParentId = action.targetParentId ?? project.widgetsById[roots[0]]?.parentId ?? variant.rootWidgetId;
@@ -639,9 +695,6 @@ export function handleSetVariantWidgetPositions(
     const variantId = findVariantIdForWidget(project, widgetId);
     if (!variantId) return project;
 
-    const variant = project.variantsById[variantId];
-    if (widgetId === variant?.rootWidgetId) return project;
-
     if (owningVariantId && owningVariantId !== variantId) return project;
     owningVariantId = variantId;
 
@@ -686,17 +739,39 @@ export function handleRenameWidget(
   const widget = project.widgetsById[action.widgetId];
   if (!widget || widget.name === action.name) return project;
   const variantId = findVariantIdForWidget(project, widget.id);
-  const next: ProjectSnapshotV2 = {
+  let next: ProjectSnapshotV2 = {
     ...project,
     widgetsById: {
       ...project.widgetsById,
       [widget.id]: { ...widget, name: action.name },
     },
   };
+  // P7: sync section name when canonical frame is renamed and section still uses default name
+  if (variantId) {
+    const variant = project.variantsById[variantId];
+    if (variant?.rootWidgetId === widget.id) {
+      const sectionId = makeSectionId(variant.id);
+      const sectionNode = project.treeNodesById?.[sectionId];
+      if (sectionNode?.kind === "state_section") {
+        const stripSuffix = (n: string) => n.endsWith(" Root") ? n.slice(0, -5) : n;
+        const oldDefault = `${stripSuffix(widget.name)} Section`;
+        if (sectionNode.name === oldDefault) {
+          const newDefault = `${stripSuffix(action.name)} Section`;
+          next = {
+            ...next,
+            treeNodesById: {
+              ...next.treeNodesById,
+              [sectionId]: { ...sectionNode, name: newDefault },
+            },
+          };
+        }
+      }
+    }
+  }
   return variantId ? touchVariant(next, variantId, action.now) : next;
 }
 
-/** Updates board resolution and applies new dimensions to each variant root screen. */
+/** Updates board resolution and applies new dimensions to every frame (canonical + draft). */
 export function handleSetBoardResolution(
   project: ProjectSnapshotV2,
   action: Extract<VariantAction, { type: "setBoardResolution" }>,
@@ -715,6 +790,17 @@ export function handleSetBoardResolution(
       ...variant,
       updatedAt: action.now ?? new Date().toISOString(),
     };
+    // Also resize draft frames in this variant's section
+    const sectionId = makeSectionId(variant.id);
+    const sectionNode = project.treeNodesById?.[sectionId];
+    if (sectionNode?.kind === "state_section") {
+      for (const childId of sectionNode.childrenIds) {
+        if (childId !== variant.rootWidgetId) {
+          const draftRoot = widgetsById[childId];
+          if (draftRoot) widgetsById[childId] = { ...draftRoot, width: action.width, height: action.height };
+        }
+      }
+    }
   }
   return {
     ...project,

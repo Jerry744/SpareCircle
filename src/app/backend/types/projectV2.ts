@@ -53,7 +53,7 @@ export interface FreeLayerNode extends BaseNode {
 
 export type TreeNode = ScreenRootNode | StateSectionNode | FreeLayerNode;
 
-// ── Section (deprecated, use StateSection) ──
+// ── StateSection (derived index, built from treeNodesById) ──
 
 export interface StateSection {
   id: string;

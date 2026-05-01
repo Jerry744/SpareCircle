@@ -69,6 +69,13 @@
 
 **关系链（目标不变量）**：`n states → n stateSections → n canonical frames`；**多屏数据隔离**：在 Screen A 下的操作不应错误修改 Screen B 的节点树。
 
+**术语使用规则（强制）**：
+
+- 在 Canvas / Hierarchy / 导出语境中，统一使用 **Frame**（Canonical Frame / Draft Frame）。
+- `Widget type = "Screen"` 仅是 Frame 的底层承载类型，不作为产品术语单独暴露。
+- 在状态机语境中，`Screen` 默认指 `screenId`（逻辑屏边界）或 ScreenGroup 范围，不等于可插入 widget。
+- 文档、注释、UI 文案中禁止把 Frame 写成“screen widget”。
+
 ---
 
 ### 3.6 Navigation Map（导航图）
@@ -123,6 +130,7 @@
 | 口语 / UI | 更精确的模型名 | 备注 |
 | --- | --- | --- |
 | 「Screen」 | `screenId` / ScreenGroup / v1 `screens[]` | v2 优先用 `screenId` 与组；v1 的 screen 是另一套列表模型 |
+| 「Screen（Widget 类型）」 | Frame 的实现承载类型（`Widget type = "Screen"`） | 工程实现名，不是产品层主术语；产品层统一称 Frame |
 | 「State」 | `StateNode` 或左栏「当前屏下的 state」 | 后者与 StateSection 规划对齐时需看 `activeScreenId` 语义 |
 | 「Canonical」 | `StateBoard.canonicalVariantId` / StateSection 的 **Canonical Frame** | 前者是 Variant 级；后者是 T5 StateSection 内唯一导出 frame |
 | 「根 Frame」 | Variant 的 `rootWidgetId`（类型为 Widget `Screen`） | 与 StateSection canonical 绑定后即为「可导出屏幕 frame」 |

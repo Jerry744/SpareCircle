@@ -6,7 +6,7 @@ import type { WidgetNode } from "../types/widget";
 import type { StateBoard } from "../types/stateBoard";
 import type { Variant } from "../types/variant";
 import type { NavigationMap, StateNode } from "../types/navigationMap";
-import type { ProjectSnapshotV2, TreeNode, ScreenRootNode, StateSectionNode } from "../types/projectV2";
+import type { ProjectSnapshotV2, TreeNode, StateSectionNode } from "../types/projectV2";
 import { CURRENT_PROJECT_SCHEMA_VERSION_V2 } from "../types/projectV2";
 import { DEFAULT_NAV_MAP_VIEWPORT } from "../types/navigationMap";
 import { DEFAULT_STATE_BOARD_META } from "../types/stateBoard";
@@ -14,7 +14,7 @@ import { DEFAULT_WORKSPACE_MODE } from "../types/mode";
 import { DEFAULT_ZOOM_LEVEL } from "../types/zoomLevel";
 import { DEFAULT_CANVAS_SNAP, DEFAULT_PROJECT_NAME } from "../types/project";
 import { makeBoardId, makeId, ID_PREFIX } from "../types/idPrefixes";
-import { syncSectionIndexes, makeScreenRootId, makeSectionId } from "../stateBoard/sectionModel";
+import { syncSectionIndexes, makeSectionId, getScreenScopeId, ensureScreenRootForScope, makeScreenRootId } from "../stateBoard/sectionModel";
 import { createDefaultUserStyleTokens } from "../../constants/styleTokenPresets";
 
 interface CreateEmptyProjectOptions {
@@ -35,7 +35,14 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
   const boardId = makeBoardId(stateNodeId);
   const variantId = options.variantId ?? makeId(ID_PREFIX.variant);
   const rootWidgetId = options.rootWidgetId ?? "screen-1-root";
-  const screenId = stateNodeId;
+  const stateNode: StateNode = {
+    id: stateNodeId,
+    name: "State1",
+    position: { x: 0, y: 0 },
+    boardId,
+    isNavigationState: true,
+  };
+  const screenId = getScreenScopeId(stateNode);
   const screenRootId = makeScreenRootId(screenId);
   const sectionId = makeSectionId(variantId);
 
@@ -53,14 +60,6 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
     radius: 0,
     visible: true,
     frameRole: "canonical",
-  };
-
-  const stateNode: StateNode = {
-    id: stateNodeId,
-    name: "State1",
-    position: { x: 0, y: 0 },
-    boardId,
-    isNavigationState: true,
   };
 
   const navigationMap: NavigationMap = {
@@ -90,13 +89,6 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
     updatedAt: createdAt,
   };
 
-  const screenRootNode: ScreenRootNode = {
-    id: screenRootId,
-    kind: "screen_root",
-    parentId: null,
-    childrenIds: [sectionId],
-  };
-
   const stateSectionNode: StateSectionNode = {
     id: sectionId,
     kind: "state_section",
@@ -113,7 +105,7 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
   };
 
   const treeNodes: Record<string, TreeNode> = {
-    [screenRootId]: screenRootNode,
+    ...ensureScreenRootForScope({}, screenId, sectionId),
     [sectionId]: stateSectionNode,
   };
 

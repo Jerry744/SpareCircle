@@ -9,7 +9,7 @@ import {
   parseScreenGroup,
 } from "../validation";
 import { runProjectV2CrossRefChecks } from "../validation";
-import type { ProjectSnapshotV2 } from "../types/projectV2";
+import type { ProjectSnapshotV2, StateSectionNode } from "../types/projectV2";
 import { CURRENT_PROJECT_SCHEMA_VERSION_V2 } from "../types/projectV2";
 import {
   getIncomingTransitions,
@@ -49,6 +49,10 @@ describe("createEmptyProjectV2", () => {
     expect(project.sectionIdByStateId["variant-root"]).toBe("section-root");
     expect(project.sectionsById["section-root"].canonicalFrameId).toBe("screen-1-root");
     expect(project.screenTreeByScreenId["state-node-alpha"].rootWidgetIds).toEqual(["screen-1-root"]);
+    // Tree consistency: section root has matching state_section node
+    const sectionNode = project.treeNodesById?.["section-root"] as StateSectionNode | undefined;
+    expect(sectionNode).toBeDefined();
+    expect(sectionNode.childrenIds).toContain("screen-1-root");
   });
 
   it("passes round-trip through parseProjectSnapshotV2", () => {

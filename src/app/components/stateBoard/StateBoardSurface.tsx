@@ -169,8 +169,6 @@ export function StateBoardSurface({
   const selectedVariantIds = getSelectedVariantIds(selection);
   const selectedWidgetIds = getSelectedWidgetIds(selection);
   const selectedWidgetIdsByVariant = getSelectedWidgetIdsByVariant(selection);
-  const canonicalFrameIds = useMemo(() => new Set(variants.map((variant) => variant.rootWidgetId)), [variants]);
-
   const render = useCallback(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -301,7 +299,7 @@ export function StateBoardSurface({
   };
 
   const deleteWidgets = (widgetIds: string[]) => {
-    const deletableIds = widgetIds.filter((widgetId) => !canonicalFrameIds.has(widgetId));
+    const deletableIds = widgetIds.filter((widgetId) => project.widgetsById[widgetId]?.type !== "Screen");
     if (deletableIds.length === 0) return;
     onVariantAction({ type: "deleteVariantWidgets", widgetIds: deletableIds });
     onSelectionChange({ kind: "widget", variantId: activeVariantId, widgetIds: [] });
@@ -360,7 +358,6 @@ export function StateBoardSurface({
       variantIds: variants.map((variant) => variant.id),
       frameById,
       rootTreesByVariant: hitTreesByVariant,
-      ignoredWidgetIds: canonicalFrameIds,
       includeScreenRoots: true,
       marquee,
     });
@@ -399,7 +396,6 @@ export function StateBoardSurface({
       hitTreesByVariant,
       selectedWidgetIds,
       world,
-      canonicalFrameIds,
     );
     const hit = hitTest(world);
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
@@ -558,7 +554,6 @@ export function StateBoardSurface({
       hitTreesByVariant,
       selectedWidgetIds,
       world,
-      canonicalFrameIds,
     );
     if (widgetHit) {
       const currentWidgetIds = getSelectedWidgetIdsForVariant(selection, widgetHit.variantId);
@@ -684,27 +679,21 @@ export function StateBoardSurface({
             {variants.map((variant) => {
               const frame = frameById[variant.id];
               if (!frame) return null;
-              const isCanonical = board.canonicalVariantId === variant.id;
               const isSelected = selectedVariantIds.includes(variant.id)
                 || getSelectedWidgetIdsForVariant(selection, variant.id).includes(variant.rootWidgetId);
               return (
                 <section
                   key={variant.id}
-                  className={`pointer-events-none absolute rounded border shadow-xl ${
+                  className={`pointer-events-none absolute border ${
                     isSelected ? "border-highlight-500 ring-2 ring-highlight-500/40" : "border-neutral-700"
                   }`}
-                  style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
+                  style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height, background: "#ffffff" }}
                 >
                   <div className="absolute -top-7 left-0 flex items-center gap-2 text-xs text-neutral-200">
-                    <span className="font-semibold">{variant.name}</span>
-                    {isCanonical ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-highlight-500/20 px-2 py-0.5 text-[11px] text-highlight-200">
-                        <Star size={11} /> Canonical
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="pointer-events-none flex h-full items-center justify-center text-xs text-neutral-500">
-                    {frame.width} × {frame.height}
+                    <span className="font-semibold">{project.widgetsById[variant.rootWidgetId]?.name ?? variant.name}</span>
+                    <span className="inline-flex items-center gap-1 rounded bg-highlight-500/20 px-2 py-0.5 text-[11px] text-highlight-200">
+                      <Star size={11} /> canonical
+                    </span>
                   </div>
                 </section>
               );
@@ -714,19 +703,16 @@ export function StateBoardSurface({
               return (
                 <section
                   key={frame.widgetId}
-                  className={`pointer-events-none absolute rounded border shadow-xl ${
+                  className={`pointer-events-none absolute border ${
                     isSelected ? "border-highlight-500 ring-2 ring-highlight-500/40" : "border-neutral-700"
                   }`}
-                  style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
+                  style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height, background: "#ffffff" }}
                 >
                   <div className="absolute -top-7 left-0 flex items-center gap-2 text-xs text-neutral-200">
-                    <span className="font-semibold">{frame.variant.name}</span>
+                    <span className="font-semibold">{project.widgetsById[frame.widgetId]?.name ?? frame.variant.name}</span>
                     <span className="inline-flex items-center gap-1 rounded bg-warning-500/20 px-2 py-0.5 text-[11px] text-warning-200">
-                      Draft
+                      draft
                     </span>
-                  </div>
-                  <div className="pointer-events-none flex h-full items-center justify-center text-xs text-neutral-500">
-                    {frame.width} x {frame.height}
                   </div>
                 </section>
               );

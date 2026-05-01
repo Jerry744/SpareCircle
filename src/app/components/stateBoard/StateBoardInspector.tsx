@@ -114,6 +114,14 @@ export function StateBoardInspector({
     );
   }
 
+  if (selection.kind === "screen" && selection.variantIds.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-neutral-400">
+        Select a screen or widget to view properties
+      </div>
+    );
+  }
+
   const inspectedVariantId = selection.variantIds[0] ?? selectedVariantId;
   const variant = project.variantsById[inspectedVariantId] ?? project.variantsById[board.canonicalVariantId];
   const root = variant ? project.widgetsById[variant.rootWidgetId] : null;

@@ -11,6 +11,13 @@
   - 多个 `Draft Frame`
 - 保留 screen 下“独立 widget”承载能力。
 
+术语硬规则（本文件强制）：
+
+- **Frame**：指 Canvas 内可导出的画面根节点。
+- **Screen（screenId）**：指状态机/项目层的逻辑屏幕范围键。
+- 当前工程里 Frame 由 `WidgetNode.type === "Screen"` 承载，但该类型名是实现细节；文档与 UI 口径统一称 **Frame**。
+- 禁止使用“screen widget”表述 Frame，以免与状态机 Screen 语义冲突。
+
 本口径用于后续 T5.2 开发与验收，优先级高于历史实现细节。
 
 ---
@@ -63,6 +70,7 @@ Canvas 节点分两类：`Non-widget Components` 与 `Widgets`。
 
 - Canonical 与 Draft 都是 `State Frame`，区别在 `frameRole`。
 - `State Frame` 必须是 `type === "Screen"` 的 frame 根节点。
+- `State Frame` 必须挂在 `StateSectionNode` 下，且不允许作为普通可插入 widget 使用。
 
 ### 2.3 Widgets（可导出节点）
 
@@ -107,6 +115,7 @@ ScreenRootNode(screenId)
 - `StateSectionNode` 只能挂在 `ScreenRootNode` 下。
 - `State Frame` 只能挂在 `StateSectionNode` 下。
 - `StateSectionNode` 下 canonical frame 数量必须严格 `= 1`（删除唯一 frame 时需同时删除该 StateSectionNode）。
+- 禁止通过通用 widget 路径创建/复制/移动 `type="Screen"` 节点；Screen 型节点只能通过 Frame 专用动作进入/离开 `StateSection`。
 
 ### 4.2 几何与交互约束
 

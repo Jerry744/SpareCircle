@@ -9,9 +9,10 @@ import type { StateNode } from "../types/navigationMap";
 import type { StateBoard } from "../types/stateBoard";
 import type { Variant } from "../types/variant";
 import type { ScreenGroup } from "../types/screenGroup";
-import type { ProjectSnapshotV2 } from "../types/projectV2";
+import type { ProjectSnapshotV2, ScreenRootNode, StateSectionNode, TreeNode } from "../types/projectV2";
 import { DEFAULT_STATE_BOARD_META } from "../types/stateBoard";
 import { ID_PREFIX, makeBoardId, makeId } from "../types/idPrefixes";
+import { makeSectionId, getScreenScopeId, ensureScreenRootForScope, makeScreenRootId } from "../stateBoard/sectionModel";
 import type { NavMapAction } from "./navMapActions";
 
 // Prune a widget subtree rooted at `rootId` from `widgetsById`. Returns the
@@ -92,7 +93,25 @@ export function handleCreateStateNode(
     id: rootWidgetId, name: `${name} Root`, type: "Screen", parentId: null, childrenIds: [],
     x: 0, y: 0, width: DEFAULT_STATE_BOARD_META.width, height: DEFAULT_STATE_BOARD_META.height,
     fill: DEFAULT_STATE_BOARD_META.fill, radius: 0, visible: true,
+    frameRole: "canonical",
   };
+
+  // Tree: create ScreenRootNode + StateSectionNode
+  const screenId = getScreenScopeId(stateNode);
+  const screenRootId = makeScreenRootId(screenId);
+  const sectionId = makeSectionId(variantId);
+  const treeWithRoot = ensureScreenRootForScope(project.treeNodesById, screenId, sectionId);
+  const stateSectionNode: StateSectionNode = {
+    id: sectionId, kind: "state_section", parentId: screenRootId, childrenIds: [rootWidgetId],
+    screenId, stateId: variantId, name: `${name} Section`, sectionId,
+    x: 0, y: 0, width: DEFAULT_STATE_BOARD_META.width, height: DEFAULT_STATE_BOARD_META.height,
+    layoutMode: "auto",
+  };
+  const treeNodes: Record<string, TreeNode> = {
+    ...treeWithRoot,
+    [sectionId]: stateSectionNode,
+  };
+
   return {
     ...project,
     navigationMap: {
@@ -103,6 +122,7 @@ export function handleCreateStateNode(
     stateBoardsById: { ...project.stateBoardsById, [boardId]: board },
     variantsById: { ...project.variantsById, [variantId]: variant },
     widgetsById: { ...project.widgetsById, [rootWidgetId]: rootWidget },
+    treeNodesById: treeNodes,
   };
 }
 
@@ -302,6 +322,24 @@ export function handleDeleteStateNodes(
   const nextInitial = nodeIds.has(project.navigationMap.initialStateNodeId)
     ? (nextNodeOrder[0] ?? project.navigationMap.initialStateNodeId)
     : project.navigationMap.initialStateNodeId;
+
+  // Clean up tree nodes for deleted variants and their screen roots
+  const sectionIdsToRemove = new Set<string>();
+  for (const variantId of cascade.variants) {
+    sectionIdsToRemove.add(makeSectionId(variantId));
+  }
+  let treeNodesById = omitEntries(project.treeNodesById, sectionIdsToRemove);
+  for (const [nodeId, node] of Object.entries(treeNodesById)) {
+    if (node.kind === "screen_root") {
+      const nextChildren = (node as ScreenRootNode).childrenIds.filter(
+        (cid) => !sectionIdsToRemove.has(cid),
+      );
+      if (nextChildren.length !== (node as ScreenRootNode).childrenIds.length) {
+        treeNodesById[nodeId] = { ...node, childrenIds: nextChildren };
+      }
+    }
+  }
+
   return {
     ...project,
     navigationMap: {
@@ -317,5 +355,6 @@ export function handleDeleteStateNodes(
     widgetsById: cascade.widgetsById,
     transitionEventBindings: omitEntries(project.transitionEventBindings, cascade.bindings),
     screenGroups: pruneGroupMembership(project.screenGroups, nodeIds),
+    treeNodesById,
   };
 }

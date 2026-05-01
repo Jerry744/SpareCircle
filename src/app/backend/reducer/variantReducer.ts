@@ -42,10 +42,10 @@ export function variantReducer(project: ProjectSnapshotV2, action: VariantAction
     }));
     case "setCanonicalVariant": return syncIfChanged(project, handleSetCanonicalVariant(project, action));
     case "createSection": return handleCreateSection(project, action);
-    case "removeSection": return project.sectionsById[action.sectionId] ? syncSectionIndexes(project) : project;
+    case "removeSection": return project.treeNodesById[action.sectionId]?.kind === "state_section" ? syncSectionIndexes(project) : project;
     case "renameSection": return handleRenameSection(project, action);
     case "bindCanonicalFrame": return handleBindCanonicalFrame(project, action);
-    case "unbindCanonicalFrame": return project.sectionsById[action.sectionId] ? project : project;
+    case "unbindCanonicalFrame": return project.treeNodesById[action.sectionId]?.kind === "state_section" ? project : project;
     case "mapStateSection": return action.sectionId === makeSectionId(action.stateId) ? syncSectionIndexes(project) : project;
     case "setVariantStatus": return syncIfChanged(project, handleSetVariantStatus(project, action));
     case "reorderVariants": return syncIfChanged(project, handleReorderVariants(project, action));
@@ -58,7 +58,7 @@ export function variantReducer(project: ProjectSnapshotV2, action: VariantAction
     case "duplicateVariantWidgets": return handleDuplicateVariantWidgets(project, action);
     case "setVariantWidgetPositions": return handleSetVariantWidgetPositions(project, action);
     case "setVariantWidgetVisibility": return handleSetVariantWidgetVisibility(project, action);
-    case "renameWidget": return handleRenameWidget(project, action);
+    case "renameWidget": return syncIfChanged(project, handleRenameWidget(project, action));
     case "setBoardResolution": return syncIfChanged(project, handleSetBoardResolution(project, action));
     default: {
       const _exhaustive: never = action;

@@ -11,7 +11,6 @@ import type { TransitionEventBinding } from "../types/eventBinding";
 import type {
   ProjectSnapshotCore,
   ProjectSnapshotV2,
-  Section,
   TreeNode,
 } from "../types/projectV2";
 import { CURRENT_PROJECT_SCHEMA_VERSION_V2 } from "../types/projectV2";
@@ -140,54 +139,7 @@ function parseStringArray(input: unknown, path: string): ParseResult<string[]> {
   return parseOk(out);
 }
 
-function parseSection(input: unknown, path: string): ParseResult<Section> {
-  if (!isRecord(input)) return parseFail(`${path} must be an object`);
-  const { id, screenId, stateId, name, canonicalFrameId, order } = input;
-  if (typeof id !== "string" || !id.startsWith("section-")) return parseFail(`${path}.id must start with "section-"`);
-  if (typeof screenId !== "string" || !screenId.trim()) return parseFail(`${path}.screenId must be a non-empty string`);
-  if (typeof stateId !== "string" || !stateId.startsWith("variant-")) return parseFail(`${path}.stateId must start with "variant-"`);
-  if (typeof name !== "string" || !name.trim()) return parseFail(`${path}.name must be a non-empty string`);
-  if (typeof canonicalFrameId !== "string" || !canonicalFrameId.trim()) {
-    return parseFail(`${path}.canonicalFrameId must be a non-empty string`);
-  }
-  if (typeof order !== "number" || !Number.isInteger(order) || order < 0) {
-    return parseFail(`${path}.order must be a non-negative integer`);
-  }
-  const draftNodeIdsResult = parseStringArray(input.draftNodeIds, `${path}.draftNodeIds`);
-  if (!draftNodeIdsResult.ok) return draftNodeIdsResult;
-  return parseOk({
-    id,
-    screenId,
-    stateId,
-    name: name.trim(),
-    canonicalFrameId,
-    draftNodeIds: draftNodeIdsResult.value,
-    order,
-  });
-}
 
-function parseStringArrayRecord(input: unknown, path: string): ParseResult<Record<string, string[]>> {
-  if (!isRecord(input)) return parseFail(`${path} must be an object`);
-  const out: Record<string, string[]> = {};
-  for (const [key, raw] of Object.entries(input)) {
-    const parsed = parseStringArray(raw, `${path}["${key}"]`);
-    if (!parsed.ok) return parsed;
-    out[key] = parsed.value;
-  }
-  return parseOk(out);
-}
-
-function parseScreenTreeIndex(input: unknown, path: string): ParseResult<Record<string, { rootWidgetIds: string[] }>> {
-  if (!isRecord(input)) return parseFail(`${path} must be an object`);
-  const out: Record<string, { rootWidgetIds: string[] }> = {};
-  for (const [key, raw] of Object.entries(input)) {
-    if (!isRecord(raw)) return parseFail(`${path}["${key}"] must be an object`);
-    const rootWidgetIds = parseStringArray(raw.rootWidgetIds, `${path}["${key}"].rootWidgetIds`);
-    if (!rootWidgetIds.ok) return rootWidgetIds;
-    out[key] = { rootWidgetIds: rootWidgetIds.value };
-  }
-  return parseOk(out);
-}
 
 function parseTreeNodesById(input: unknown, path: string): ParseResult<Record<string, TreeNode>> {
   if (!isRecord(input)) return parseFail(`${path} must be a non-empty object — tree structure is required`);
@@ -211,22 +163,6 @@ function parseTreeNodesById(input: unknown, path: string): ParseResult<Record<st
     }
   }
   return parseOk(result);
-}
-
-function assertRecordMatches(
-  actual: Record<string, unknown>,
-  expected: Record<string, unknown>,
-  path: string,
-): ParseResult<void> {
-  const actualKeys = Object.keys(actual).sort();
-  const expectedKeys = Object.keys(expected).sort();
-  if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) return parseFail(`${path} keys do not match the derived section model`);
-  for (const key of expectedKeys) {
-    if (JSON.stringify(actual[key]) !== JSON.stringify(expected[key])) {
-      return parseFail(`${path}["${key}"] does not match the derived section model`);
-    }
-  }
-  return parseOk(undefined);
 }
 
 function applyAndValidateSectionIndexes(
