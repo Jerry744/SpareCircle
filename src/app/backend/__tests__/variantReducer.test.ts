@@ -430,7 +430,7 @@ describe("variantReducer", () => {
     expect(parseProjectSnapshotV2(duplicated).ok).toBe(true);
   });
 
-  it("moves widgets directly under a section as independent draft nodes", () => {
+  it("rejects moving normal widgets directly under a section", () => {
     const project = makeFixture();
     const moved = variantReducer(project, {
       type: "moveVariantWidget",
@@ -440,13 +440,7 @@ describe("variantReducer", () => {
       now: NOW,
     });
 
-    expect(moved.widgetsById["button-a"].parentId).toBeNull();
-    expect(moved.widgetsById["screen-root"].childrenIds).toEqual([]);
-    expect(moved.sectionsById["section-root"].draftNodeIds).toEqual(["button-a"]);
-    // Tree consistency: widget moves under section root should appear in childrenIds
-    const movedSection = moved.treeNodesById?.["section-root"] as StateSectionNode | undefined;
-    expect(movedSection).toBeDefined();
-    expect(movedSection.childrenIds).toContain("button-a");
+    expect(moved).toBe(project);
     expect(parseProjectSnapshotV2(moved).ok).toBe(true);
   });
 

@@ -98,20 +98,26 @@ function checkVariantBoardLink(input: ProjectV2CrossRefInput): CrossRefResult {
   return { ok: true };
 }
 
-// INV-4: each Variant's rootWidgetId must be a Screen widget with no parent.
+// INV-4: each Variant's canonicalFrameId must be a frame root with no parent.
 function checkVariantRootWidget(input: ProjectV2CrossRefInput): CrossRefResult {
   const { stateBoardsById, variantsById, widgetsById } = input;
   const rootsSeen = new Map<string, string>();
   for (const variant of Object.values(variantsById)) {
-    const widget = widgetsById[variant.rootWidgetId];
+    if (variant.rootWidgetId !== variant.canonicalFrameId) {
+      return fail(`Variant "${variant.id}".rootWidgetId must equal canonicalFrameId during migration`);
+    }
+    const widget = widgetsById[variant.canonicalFrameId];
     if (!widget) {
-      return fail(`Variant "${variant.id}".rootWidgetId "${variant.rootWidgetId}" is not a known widget`);
+      return fail(`Variant "${variant.id}".canonicalFrameId "${variant.canonicalFrameId}" is not a known widget`);
     }
     if (widget.type !== "Screen") {
-      return fail(`Variant "${variant.id}" root widget "${widget.id}" must be of type "Screen"`);
+      return fail(`Variant "${variant.id}" canonical frame "${widget.id}" must be of type "Screen"`);
     }
     if (widget.parentId !== null) {
-      return fail(`Variant "${variant.id}" root widget "${widget.id}" must have parentId === null`);
+      return fail(`Variant "${variant.id}" canonical frame "${widget.id}" must have parentId === null`);
+    }
+    if (widget.frameRole !== "canonical") {
+      return fail(`Variant "${variant.id}" canonical frame "${widget.id}" must have frameRole "canonical"`);
     }
     const board = stateBoardsById[variant.boardId];
     if (board && (widget.width !== board.meta.width || widget.height !== board.meta.height)) {
@@ -171,8 +177,8 @@ function checkSections(input: ProjectV2CrossRefInput): CrossRefResult {
       if (section.stateId !== variant.id) return fail(`Section "${section.id}".stateId must equal "${variant.id}"`);
     if (!sectionOrderMembership.has(section.id)) return fail(`Section "${section.id}" must be present in sectionOrderByScreenId`);
 
-      if (section.canonicalFrameId !== variant.rootWidgetId) {
-        return fail(`Section "${section.id}".canonicalFrameId must equal its Variant root frame`);
+      if (section.canonicalFrameId !== variant.canonicalFrameId) {
+        return fail(`Section "${section.id}".canonicalFrameId must equal its Variant canonical frame`);
     }
       for (const draftNodeId of section.draftNodeIds) {
         const draftNode = input.widgetsById[draftNodeId];
@@ -182,7 +188,7 @@ function checkSections(input: ProjectV2CrossRefInput): CrossRefResult {
           return fail(`Section "${section.id}" draft frame "${draftNodeId}" must match StateBoard resolution`);
         }
       }
-      const frameRootIds = [variant.rootWidgetId, ...section.draftNodeIds.filter((nodeId) => input.widgetsById[nodeId]?.type === "Screen")];
+      const frameRootIds = [section.canonicalFrameId, ...section.draftNodeIds.filter((nodeId) => input.widgetsById[nodeId]?.type === "Screen")];
       for (const rootWidgetId of frameRootIds) {
         if (screenIdByRootWidgetId[rootWidgetId] !== section.screenId) {
           return fail(`Frame root "${rootWidgetId}" must belong to Section "${section.id}" screen tree`);
@@ -204,15 +210,19 @@ function checkSections(input: ProjectV2CrossRefInput): CrossRefResult {
 
 // Tree ↔ derived consistency: draftNodeIds must match tree children + frameRole.
 function checkTreeDerivedConsistency(input: ProjectV2CrossRefInput): CrossRefResult {
-  const { treeNodesById, sectionsById, variantsById } = input;
+  const { treeNodesById, sectionsById, widgetsById } = input;
   for (const [sectionId, section] of Object.entries(sectionsById)) {
     const treeNode = treeNodesById[sectionId];
     if (!treeNode || treeNode.kind !== "state_section") {
       return fail(`Section "${sectionId}" has no matching state_section in treeNodesById`);
     }
-    const canonicalFrameId = section.canonicalFrameId;
+    const canonicalFrameId = treeNode.childrenIds.find((cid) => widgetsById[cid]?.frameRole === "canonical");
+    if (!canonicalFrameId) return fail(`Section "${sectionId}" must have exactly one canonical frame`);
+    if (section.canonicalFrameId !== canonicalFrameId) {
+      return fail(`Section "${sectionId}".canonicalFrameId must match tree-derived canonical frame "${canonicalFrameId}"`);
+    }
     const expectedDraftNodeIds = treeNode.childrenIds.filter(
-      (cid) => cid !== canonicalFrameId,
+      (cid) => widgetsById[cid]?.frameRole === "draft",
     );
     const actualDraftNodeIds = section.draftNodeIds;
     if (JSON.stringify([...expectedDraftNodeIds].sort()) !== JSON.stringify([...actualDraftNodeIds].sort())) {
@@ -244,14 +254,24 @@ function checkTreeInvariants(input: ProjectV2CrossRefInput): CrossRefResult {
   }
   if (screenRoots.length === 0) return fail("Must have at least one screen_root tree node");
 
+  const frameOwners = new Map<string, string>();
   for (const node of Object.values(treeNodesById)) {
     if (node.kind !== "state_section") continue;
     let canonicalCount = 0;
     for (const childId of node.childrenIds) {
       const widget = widgetsById[childId];
+      if (!widget) return fail(`StateSection "${node.id}" references missing frame "${childId}"`);
+      if (widget.type !== "Screen") return fail(`StateSection "${node.id}" child "${childId}" must be a Frame root`);
+      if (widget.parentId !== null) return fail(`StateSection "${node.id}" frame "${childId}" must have parentId === null`);
+      if (widget.frameRole !== "canonical" && widget.frameRole !== "draft") {
+        return fail(`StateSection "${node.id}" frame "${childId}" must have frameRole "canonical" or "draft"`);
+      }
+      const previousOwner = frameOwners.get(childId);
+      if (previousOwner) return fail(`Frame "${childId}" is listed by both StateSection "${previousOwner}" and StateSection "${node.id}"`);
+      frameOwners.set(childId, node.id);
       if (widget?.frameRole === "canonical") canonicalCount += 1;
     }
-    if (canonicalCount > 1) return fail(`StateSection "${node.id}" has more than one canonical frame`);
+    if (canonicalCount !== 1) return fail(`StateSection "${node.id}" must have exactly one canonical frame`);
   }
 
   // Screen-type widgets must be frame roots (parentId === null)

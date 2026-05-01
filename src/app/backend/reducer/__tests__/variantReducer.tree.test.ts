@@ -186,3 +186,112 @@ describe("tree - handleDuplicateSectionFrame tree-first", () => {
     expect(result.widgetsById["draft-frame-root"]?.frameRole).toBe("draft");
   });
 });
+
+describe("tree - section and frame movement", () => {
+  it("reorders frames inside a section without changing canonical status", () => {
+    const project = makeFixture();
+    const sectionId = makeSectionId("variant-root");
+    const withDraft = variantReducer(project, {
+      type: "duplicateSectionFrame",
+      sectionId,
+      frameId: "screen-root",
+      newFrameId: "draft-frame-root",
+      now: NOW,
+    });
+
+    const moved = variantReducer(withDraft, {
+      type: "moveSectionFrame",
+      frameId: "screen-root",
+      targetSectionId: sectionId,
+      targetIndex: 2,
+      now: NOW,
+    });
+
+    expect((moved.treeNodesById[sectionId] as StateSectionNode).childrenIds).toEqual(["draft-frame-root", "screen-root"]);
+    expect(moved.widgetsById["screen-root"].frameRole).toBe("canonical");
+    expect(moved.widgetsById["draft-frame-root"].frameRole).toBe("draft");
+    expect(moved.sectionsById[sectionId].canonicalFrameId).toBe("screen-root");
+  });
+
+  it("promotes a draft frame to canonical", () => {
+    const project = makeFixture();
+    const sectionId = makeSectionId("variant-root");
+    const withDraft = variantReducer(project, {
+      type: "duplicateSectionFrame",
+      sectionId,
+      frameId: "screen-root",
+      newFrameId: "draft-frame-root",
+      now: NOW,
+    });
+
+    const promoted = variantReducer(withDraft, {
+      type: "promoteSectionFrame",
+      sectionId,
+      frameId: "draft-frame-root",
+      now: NOW,
+    });
+
+    expect(promoted.widgetsById["draft-frame-root"].frameRole).toBe("canonical");
+    expect(promoted.widgetsById["screen-root"].frameRole).toBe("draft");
+    expect(promoted.variantsById["variant-root"].canonicalFrameId).toBe("draft-frame-root");
+    expect(promoted.variantsById["variant-root"].rootWidgetId).toBe("draft-frame-root");
+  });
+
+  it("moves a draft frame to another section as a draft", () => {
+    const project = makeFixture();
+    const sectionId = makeSectionId("variant-root");
+    const withDraft = variantReducer(project, {
+      type: "duplicateSectionFrame",
+      sectionId,
+      frameId: "screen-root",
+      newFrameId: "draft-frame-root",
+      now: NOW,
+    });
+    const withSecond = variantReducer(withDraft, {
+      type: "createVariant",
+      boardId: "board-alpha",
+      mode: "blank",
+      name: "Second",
+      variantId: "variant-second",
+      rootWidgetId: "second-root",
+      now: NOW,
+    });
+    const targetSectionId = makeSectionId("variant-second");
+
+    const moved = variantReducer(withSecond, {
+      type: "moveSectionFrame",
+      frameId: "draft-frame-root",
+      targetSectionId,
+      targetIndex: 1,
+      now: NOW,
+    });
+
+    expect((moved.treeNodesById[sectionId] as StateSectionNode).childrenIds).toEqual(["screen-root"]);
+    expect((moved.treeNodesById[targetSectionId] as StateSectionNode).childrenIds).toEqual(["second-root", "draft-frame-root"]);
+    expect(moved.widgetsById["draft-frame-root"].frameRole).toBe("draft");
+    expect(moved.sectionsById[targetSectionId].canonicalFrameId).toBe("second-root");
+  });
+
+  it("reorders sections under the screen root", () => {
+    const project = makeFixture();
+    const withSecond = variantReducer(project, {
+      type: "createVariant",
+      boardId: "board-alpha",
+      mode: "blank",
+      name: "Second",
+      variantId: "variant-second",
+      rootWidgetId: "second-root",
+      now: NOW,
+    });
+
+    const moved = variantReducer(withSecond, {
+      type: "moveStateSection",
+      screenId: "state-node-alpha",
+      sectionId: makeSectionId("variant-second"),
+      targetIndex: 0,
+    });
+
+    const screenRoot = moved.treeNodesById[makeScreenRootId("state-node-alpha")] as ScreenRootNode;
+    expect(screenRoot.childrenIds.slice(0, 2)).toEqual([makeSectionId("variant-second"), makeSectionId("variant-root")]);
+  });
+});

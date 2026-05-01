@@ -99,6 +99,7 @@ export function cloneVariant(params: {
       id: newVariantId,
       name: params.newVariantName.trim() || "Variant",
       status: "draft",
+      canonicalFrameId: idMap.get(source.rootWidgetId) as string,
       rootWidgetId: idMap.get(source.rootWidgetId) as string,
       createdAt,
       updatedAt: createdAt,

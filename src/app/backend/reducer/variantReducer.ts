@@ -15,11 +15,15 @@ import {
   handleCreateVariant,
   handleDeleteVariant,
   handleDeleteVariantWidgets,
+  handleDeleteSectionFrame,
   handleDuplicateSectionFrame,
   handleDuplicateVariantWidgets,
   handleInsertVariantWidget,
   handleMoveVariantScreen,
   handleMoveVariantWidget,
+  handleMoveSectionFrame,
+  handleMoveStateSection,
+  handlePromoteSectionFrame,
   handleRenameSection,
   handleRenameVariant,
   handleRenameWidget,
@@ -51,6 +55,10 @@ export function variantReducer(project: ProjectSnapshotV2, action: VariantAction
     case "reorderVariants": return syncIfChanged(project, handleReorderVariants(project, action));
     case "deleteVariant": return syncIfChanged(project, handleDeleteVariant(project, action));
     case "moveVariantScreen": return handleMoveVariantScreen(project, action);
+    case "moveStateSection": return syncIfChanged(project, handleMoveStateSection(project, action));
+    case "moveSectionFrame": return syncIfChanged(project, handleMoveSectionFrame(project, action));
+    case "promoteSectionFrame": return syncIfChanged(project, handlePromoteSectionFrame(project, action));
+    case "deleteSectionFrame": return syncIfChanged(project, handleDeleteSectionFrame(project, action));
     case "duplicateSectionFrame": return syncIfChanged(project, handleDuplicateSectionFrame(project, action));
     case "insertVariantWidget": return handleInsertVariantWidget(project, action);
     case "moveVariantWidget": return syncIfChanged(project, handleMoveVariantWidget(project, action));

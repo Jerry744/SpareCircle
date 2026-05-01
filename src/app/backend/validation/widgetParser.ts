@@ -44,6 +44,7 @@ export function parseNormalizedWidget(
   const maybeChecked = input.checked;
   const maybeVisible = input.visible;
   const maybeLocked = input.locked;
+  const maybeFrameRole = input.frameRole;
   const maybeEventBindings = input.eventBindings;
 
   if (maybeText !== undefined && typeof maybeText !== "string") return { ok: false, error: `${path}.text must be a string when provided` };
@@ -60,6 +61,9 @@ export function parseNormalizedWidget(
   if (maybeChecked !== undefined && typeof maybeChecked !== "boolean") return { ok: false, error: `${path}.checked must be a boolean when provided` };
   if (maybeVisible !== undefined && typeof maybeVisible !== "boolean") return { ok: false, error: `${path}.visible must be a boolean when provided` };
   if (maybeLocked !== undefined && typeof maybeLocked !== "boolean") return { ok: false, error: `${path}.locked must be a boolean when provided` };
+  if (maybeFrameRole !== undefined && maybeFrameRole !== "canonical" && maybeFrameRole !== "draft") {
+    return { ok: false, error: `${path}.frameRole must be \"canonical\" or \"draft\" when provided` };
+  }
 
   const parsedEventBindings = parseEventBindingsMap(maybeEventBindings, `${path}.eventBindings`);
   if (!parsedEventBindings.ok) return parsedEventBindings;
@@ -90,6 +94,7 @@ export function parseNormalizedWidget(
       checked: maybeChecked as boolean | undefined,
       visible: maybeVisible,
       locked: maybeLocked,
+      frameRole: maybeFrameRole as "canonical" | "draft" | undefined,
       eventBindings: parsedEventBindings.eventBindings,
     },
   };

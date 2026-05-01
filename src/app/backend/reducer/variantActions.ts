@@ -30,6 +30,17 @@ export type VariantAction =
   | { type: "reorderVariants"; boardId: string; orderedIds: string[] }
   | { type: "deleteVariant"; variantId: string }
   | { type: "moveVariantScreen"; variantId: string; position: { x: number; y: number }; now?: string; historyMode?: "merge" }
+  | { type: "moveStateSection"; screenId: string; sectionId: string; targetIndex: number }
+  | {
+      type: "moveSectionFrame";
+      frameId: string;
+      targetSectionId: string;
+      targetIndex: number;
+      canonicalMode?: "preserve" | "forceDraft" | "forceCanonical";
+      now?: string;
+    }
+  | { type: "promoteSectionFrame"; sectionId: string; frameId: string; now?: string }
+  | { type: "deleteSectionFrame"; sectionId: string; frameId: string; replacementCanonicalFrameId?: string; now?: string }
   | { type: "duplicateSectionFrame"; sectionId: string; frameId: string; newFrameId?: string; offset?: { x: number; y: number }; now?: string }
   | {
       type: "insertVariantWidget";

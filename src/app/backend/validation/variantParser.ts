@@ -27,7 +27,7 @@ function parseIsoTimestamp(value: unknown, path: string): ParseResult<string> {
 export function parseVariant(input: unknown, path: string): ParseResult<Variant> {
   if (!isRecord(input)) return parseFail(`${path} must be an object`);
 
-  const { id, boardId, name, status, rootWidgetId, description } = input;
+  const { id, boardId, name, status, rootWidgetId, canonicalFrameId, description } = input;
 
   if (typeof id !== "string" || !id.startsWith(`${ID_PREFIX.variant}-`)) {
     return parseFail(`${path}.id must start with "${ID_PREFIX.variant}-"`);
@@ -41,8 +41,19 @@ export function parseVariant(input: unknown, path: string): ParseResult<Variant>
   if (!isVariantStatus(status)) {
     return parseFail(`${path}.status must be one of ${VARIANT_STATUSES.join(", ")}`);
   }
-  if (typeof rootWidgetId !== "string" || !rootWidgetId.trim()) {
-    return parseFail(`${path}.rootWidgetId must be a non-empty string`);
+  const canonicalFrameIdValue = typeof canonicalFrameId === "string" && canonicalFrameId.trim()
+    ? canonicalFrameId
+    : typeof rootWidgetId === "string" && rootWidgetId.trim()
+      ? rootWidgetId
+      : null;
+  if (!canonicalFrameIdValue) {
+    return parseFail(`${path}.canonicalFrameId must be a non-empty string`);
+  }
+  if (rootWidgetId !== undefined && (typeof rootWidgetId !== "string" || !rootWidgetId.trim())) {
+    return parseFail(`${path}.rootWidgetId must be a non-empty string when provided`);
+  }
+  if (typeof rootWidgetId === "string" && rootWidgetId.trim() && rootWidgetId !== canonicalFrameIdValue) {
+    return parseFail(`${path}.rootWidgetId must equal ${path}.canonicalFrameId during migration`);
   }
   if (description !== undefined && typeof description !== "string") {
     return parseFail(`${path}.description must be a string when provided`);
@@ -58,7 +69,8 @@ export function parseVariant(input: unknown, path: string): ParseResult<Variant>
     boardId,
     name,
     status,
-    rootWidgetId,
+    canonicalFrameId: canonicalFrameIdValue,
+    rootWidgetId: typeof rootWidgetId === "string" && rootWidgetId.trim() ? rootWidgetId : canonicalFrameIdValue,
     description,
     createdAt: createdAtResult.value,
     updatedAt: updatedAtResult.value,

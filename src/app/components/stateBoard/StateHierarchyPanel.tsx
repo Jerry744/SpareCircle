@@ -13,7 +13,8 @@ import { makeScreenRootId, getScreenIdForStateNode } from "../../backend/stateBo
 
 type DropPosition = "before" | "inside" | "after";
 type DragSource =
-  | { kind: "screen"; variantId: string }
+  | { kind: "section"; sectionId: string; screenId: string }
+  | { kind: "frame"; frameId: string; sectionId: string }
   | { kind: "widget"; widgetId: string };
 type TreeNode = WidgetNode & { children: TreeNode[] };
 type TreeLocation = { parentId: string | null; index: number; widget: TreeNode };
@@ -251,13 +252,18 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
     rangeAnchorRef.current = widgetId;
   };
 
-  const performFrameReorder = (sourceVariantId: string, targetVariantId: string, position: DropPosition) => {
-    if (sourceVariantId === targetVariantId || position === "inside") return;
-    const orderedIds = board.variantIds.filter((id) => id !== sourceVariantId);
-    const targetIndex = orderedIds.indexOf(targetVariantId);
+  const performFrameDrop = (sourceFrameId: string, targetFrameId: string, targetSectionId: string, position: DropPosition) => {
+    if (sourceFrameId === targetFrameId || position === "inside") return;
+    const section = project.treeNodesById[targetSectionId];
+    if (!section || section.kind !== "state_section") return;
+    const targetIndex = section.childrenIds.indexOf(targetFrameId);
     if (targetIndex < 0) return;
-    orderedIds.splice(targetIndex + (position === "after" ? 1 : 0), 0, sourceVariantId);
-    onVariantAction({ type: "reorderVariants", boardId: board.id, orderedIds });
+    onVariantAction({
+      type: "moveSectionFrame",
+      frameId: sourceFrameId,
+      targetSectionId,
+      targetIndex: targetIndex + (position === "after" ? 1 : 0),
+    });
   };
 
   const performWidgetMove = (sourceWidgetId: string, targetRoot: TreeNode, targetWidgetId: string, position: DropPosition) => {
@@ -277,12 +283,12 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
       targetIndex: target.index + (position === "after" ? 1 : 0),
     });
   };
-  const performWidgetMoveToSection = (sourceWidgetId: string, sectionId: string) => {
+  const performFrameMoveToSection = (sourceFrameId: string, sectionId: string) => {
     const section = project.treeNodesById[sectionId];
     if (!section || section.kind !== "state_section") return;
     const stateSection = section as StateSectionNode;
-    if (stateSection.childrenIds.includes(sourceWidgetId)) return;
-    onVariantAction({ type: "moveVariantWidget", widgetId: sourceWidgetId, targetParentId: sectionId, targetIndex: stateSection.childrenIds.length });
+    if (stateSection.childrenIds.includes(sourceFrameId)) return;
+    onVariantAction({ type: "moveSectionFrame", frameId: sourceFrameId, targetSectionId: sectionId, targetIndex: stateSection.childrenIds.length });
   };
 
   const renderWidget = (widget: TreeNode, variant: Variant, root: TreeNode, depth: number, sectionId: string, isCanonicalFrame: boolean) => {
@@ -335,7 +341,7 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
           }}
           draggable
           onDragStart={(event) => {
-            const source: DragSource = isCanonicalFrameRoot ? { kind: "screen", variantId: variant.id } : { kind: "widget", widgetId: widget.id };
+            const source: DragSource = isFrameRoot ? { kind: "frame", frameId: widget.id, sectionId } : { kind: "widget", widgetId: widget.id };
             setDragging(source);
             event.dataTransfer.effectAllowed = "move";
             event.dataTransfer.setData("state-hierarchy-source", JSON.stringify(source));
@@ -344,14 +350,14 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
             const source = dragging;
             if (!source || (source.kind === "widget" && source.widgetId === widget.id)) return;
             event.preventDefault();
-            const position = isFrameRoot && source.kind === "screen" ? resolveDropPosition({ ...widget, type: "Label" }, event) : resolveDropPosition(widget, event);
+            const position = isFrameRoot && source.kind === "frame" ? resolveDropPosition({ ...widget, type: "Label" }, event) : resolveDropPosition(widget, event);
             setDropTarget({ key: widget.id, position });
           }}
           onDrop={(event) => {
             event.preventDefault();
             const source = dragging;
             const position = dropTarget?.key === widget.id ? dropTarget.position : resolveDropPosition(widget, event);
-            if (source?.kind === "screen" && isFrameRoot) performFrameReorder(source.variantId, variant.id, position);
+            if (source?.kind === "frame" && isFrameRoot) performFrameDrop(source.frameId, widget.id, sectionId, position);
             if (source?.kind === "widget") performWidgetMove(source.widgetId, root, widget.id, position);
             clearDrag();
           }}
@@ -488,16 +494,36 @@ export function StateHierarchyPanel({ context }: StateHierarchyPanelProps): JSX.
           <div key={id} className="mb-2">
             <div
               className="flex items-center gap-1 rounded px-2 py-1 text-xs text-neutral-200"
+              draggable
+              onDragStart={(event) => {
+                const source: DragSource = { kind: "section", sectionId: id, screenId: (sectionNode as StateSectionNode).screenId };
+                setDragging(source);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("state-hierarchy-source", JSON.stringify(source));
+              }}
               onDragOver={(event) => {
-                if (dragging?.kind !== "widget") return;
+                if (!dragging || (dragging.kind === "section" && dragging.sectionId === id)) return;
                 event.preventDefault();
-                setDropTarget({ key: id, position: "inside" });
+                const firstFrame = frames[0]?.root;
+                setDropTarget({ key: id, position: dragging.kind === "frame" || !firstFrame ? "inside" : resolveDropPosition({ ...firstFrame, type: "Label" }, event) });
               }}
               onDrop={(event) => {
                 event.preventDefault();
-                if (dragging?.kind === "widget") performWidgetMoveToSection(dragging.widgetId, id);
+                const source = dragging;
+                if (source?.kind === "frame") performFrameMoveToSection(source.frameId, id);
+                if (source?.kind === "section") {
+                  const stateNode = project.navigationMap.stateNodes[board.stateNodeId];
+                  const screenId = stateNode ? getScreenIdForStateNode(stateNode) : source.screenId;
+                  const root = project.treeNodesById[makeScreenRootId(screenId)];
+                  const targetIndex = root?.kind === "screen_root" ? root.childrenIds.indexOf(id) : -1;
+                  if (targetIndex >= 0) {
+                    const position = dropTarget?.key === id ? dropTarget.position : "after";
+                    onVariantAction({ type: "moveStateSection", screenId, sectionId: source.sectionId, targetIndex: targetIndex + (position === "after" ? 1 : 0) });
+                  }
+                }
                 clearDrag();
               }}
+              onDragEnd={clearDrag}
             >
               <div className="w-5 flex items-center justify-center"><FolderOpen size={13} /></div>
               {renamingSectionId === sectionId ? (

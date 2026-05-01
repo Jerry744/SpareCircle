@@ -87,7 +87,7 @@ export function handleCreateStateNode(
   };
   const variant: Variant = {
     id: variantId, boardId, name: "Canonical", status: "canonical",
-    rootWidgetId, createdAt, updatedAt: createdAt,
+    canonicalFrameId: rootWidgetId, rootWidgetId, createdAt, updatedAt: createdAt,
   };
   const rootWidget: WidgetNode = {
     id: rootWidgetId, name: `${name} Root`, type: "Screen", parentId: null, childrenIds: [],

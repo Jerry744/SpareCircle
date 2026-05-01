@@ -84,6 +84,7 @@ export function createEmptyProjectV2(options: CreateEmptyProjectOptions = {}): P
     boardId,
     name: "Canonical",
     status: "canonical",
+    canonicalFrameId: rootWidgetId,
     rootWidgetId,
     createdAt,
     updatedAt: createdAt,

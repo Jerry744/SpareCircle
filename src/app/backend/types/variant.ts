@@ -14,11 +14,20 @@ export interface Variant {
   boardId: string;
   name: string;
   status: VariantStatus;
+  // canonicalFrameId points into ProjectSnapshotV2.widgetsById. The referenced
+  // widget must be a frame root: type="Screen", parentId=null, and
+  // frameRole="canonical".
+  canonicalFrameId: string;
   // rootWidgetId points into ProjectSnapshotV2.widgetsById. The referenced
   // widget must be type="Screen" and parentId=null (INV-4).
+  /** @deprecated Use canonicalFrameId. Kept during the frame-first migration. */
   rootWidgetId: string;
   description?: string;
   // ISO-8601 timestamps. Persisted verbatim for deterministic diffs.
   createdAt: string;
   updatedAt: string;
+}
+
+export function getVariantCanonicalFrameId(variant: Variant): string {
+  return variant.canonicalFrameId || variant.rootWidgetId;
 }

@@ -1,6 +1,6 @@
-import type { ProjectSnapshotCore, Section, StateSection, TreeNode, ScreenRootNode, StateSectionNode } from "../types/projectV2";
+import type { ProjectSnapshotCore, Section, TreeNode, ScreenRootNode, StateSectionNode } from "../types/projectV2";
 import type { StateNode } from "../types/navigationMap";
-import { ID_PREFIX, makeId } from "../types/idPrefixes";
+import { ID_PREFIX } from "../types/idPrefixes";
 
 export function makeSectionId(stateId: string): string {
   return stateId.startsWith("variant-")
@@ -71,6 +71,42 @@ export function getStateSectionFrameBuckets<T extends ProjectSnapshotCore>(
   return { canonical, draft };
 }
 
+export function getStateSectionFrameIds<T extends ProjectSnapshotCore>(project: T, stateSectionId: string): string[] {
+  const section = project.treeNodesById?.[stateSectionId];
+  if (!section || section.kind !== "state_section") return [];
+  return section.childrenIds.filter((childId) => {
+    const widget = project.widgetsById[childId];
+    return widget?.type === "Screen" && widget.parentId === null;
+  });
+}
+
+export function getStateSectionCanonicalFrameId<T extends ProjectSnapshotCore>(project: T, stateSectionId: string): string | null {
+  const { canonical } = getStateSectionFrameBuckets(project, stateSectionId);
+  return canonical ?? null;
+}
+
+export function getStateSectionDraftFrameIds<T extends ProjectSnapshotCore>(project: T, stateSectionId: string): string[] {
+  return getStateSectionFrameBuckets(project, stateSectionId).draft;
+}
+
+export function getFrameSectionId<T extends ProjectSnapshotCore>(project: T, frameId: string): string | null {
+  for (const node of Object.values(project.treeNodesById ?? {})) {
+    if (node.kind === "state_section" && node.childrenIds.includes(frameId)) return node.id;
+  }
+  return null;
+}
+
+export function getFrameScreenId<T extends ProjectSnapshotCore>(project: T, frameId: string): string | null {
+  const sectionId = getFrameSectionId(project, frameId);
+  const section = sectionId ? project.treeNodesById?.[sectionId] : undefined;
+  return section?.kind === "state_section" ? section.screenId : null;
+}
+
+export function getVariantCanonicalFrameIdFromProject<T extends ProjectSnapshotCore>(project: T, variantId: string): string | null {
+  const sectionId = makeSectionId(variantId);
+  return getStateSectionCanonicalFrameId(project, sectionId) ?? project.variantsById[variantId]?.canonicalFrameId ?? project.variantsById[variantId]?.rootWidgetId ?? null;
+}
+
 export function deriveSectionIndexes<T extends ProjectSnapshotCore>(project: T): Pick<
   ProjectSnapshotCore,
   "sectionsById" | "sectionOrderByScreenId" | "sectionIdByStateId" | "screenTreeByScreenId" | "screenIdByRootWidgetId" | "treeNodesById"
@@ -104,17 +140,15 @@ export function deriveSectionIndexes<T extends ProjectSnapshotCore>(project: T):
 
       if (existingTreeNode?.kind !== "state_section") continue;
       const stateSection = existingTreeNode as StateSectionNode;
-      // Children that are not the canonical root are draft frames.
-      // All children are type "Screen" (frame roots in widget tree).
-      const draftNodeIds = stateSection.childrenIds.filter(
-        (cid) => cid !== variant.rootWidgetId && Boolean(project.widgetsById[cid]),
-      );
+      const frameIds = getStateSectionFrameIds(project, sectionId);
+      const canonicalFrameId = getStateSectionCanonicalFrameId(project, sectionId) ?? variant.canonicalFrameId ?? variant.rootWidgetId;
+      const draftNodeIds = frameIds.filter((cid) => cid !== canonicalFrameId && project.widgetsById[cid]?.frameRole === "draft");
       sectionsById[sectionId] = {
         id: sectionId,
         screenId: stateSection.screenId,
         stateId: stateSection.stateId,
         name: stateSection.name,
-        canonicalFrameId: variant.rootWidgetId,
+        canonicalFrameId,
         draftNodeIds,
         order,
       };
@@ -123,16 +157,11 @@ export function deriveSectionIndexes<T extends ProjectSnapshotCore>(project: T):
       sectionIdByStateId[variant.id] = sectionId;
       sectionOrderByScreenId[screenId] = [...(sectionOrderByScreenId[screenId] ?? []), sectionId];
 
-      const section = sectionsById[sectionId];
       // type "Screen" here is the frame root implementation detail
-      const draftScreenRootIds = section.draftNodeIds.filter(
-        (nodeId) => project.widgetsById[nodeId]?.type === "Screen",
-      );
       screenTreeByScreenId[screenId] = {
-        rootWidgetIds: [...(screenTreeByScreenId[screenId]?.rootWidgetIds ?? []), variant.rootWidgetId, ...draftScreenRootIds],
+        rootWidgetIds: [...(screenTreeByScreenId[screenId]?.rootWidgetIds ?? []), ...frameIds],
       };
-      screenIdByRootWidgetId[variant.rootWidgetId] = screenId;
-      for (const rootWidgetId of draftScreenRootIds) screenIdByRootWidgetId[rootWidgetId] = screenId;
+      for (const frameId of frameIds) screenIdByRootWidgetId[frameId] = screenId;
       order += 1;
     }
   });

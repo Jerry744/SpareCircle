@@ -24,6 +24,8 @@ import {
   getScreenScopeId,
   ensureScreenRootForScope,
   makeScreenRootId,
+  getFrameSectionId,
+  getStateSectionCanonicalFrameId,
 } from "../stateBoard/sectionModel";
 import { createWidgetNode } from "../widgets";
 import { touchVariant } from "./helpers";
@@ -115,6 +117,44 @@ function findSectionIdForRoot(project: ProjectSnapshotV2, rootWidgetId: string):
     if (node.kind === "state_section" && node.childrenIds.includes(rootWidgetId)) return node.id;
   }
   return null;
+}
+
+function getSectionNode(project: ProjectSnapshotV2, sectionId: string): StateSectionNode | null {
+  const node = project.treeNodesById?.[sectionId];
+  return node?.kind === "state_section" ? node as StateSectionNode : null;
+}
+
+function withVariantCanonicalFrame(project: ProjectSnapshotV2, variantId: string, frameId: string, now?: string): ProjectSnapshotV2 {
+  const variant = project.variantsById[variantId];
+  if (!variant) return project;
+  const next: ProjectSnapshotV2 = {
+    ...project,
+    variantsById: {
+      ...project.variantsById,
+      [variantId]: {
+        ...variant,
+        canonicalFrameId: frameId,
+        rootWidgetId: frameId,
+      },
+    },
+  };
+  return touchVariant(next, variantId, now);
+}
+
+function promoteFirstRemainingFrame(
+  widgetsById: Record<string, WidgetNode>,
+  section: StateSectionNode,
+  excludedFrameId: string,
+): { widgetsById: Record<string, WidgetNode>; canonicalFrameId: string | null } {
+  const replacementFrameId = section.childrenIds.find((childId) => childId !== excludedFrameId && widgetsById[childId]?.type === "Screen") ?? null;
+  if (!replacementFrameId) return { widgetsById, canonicalFrameId: null };
+  return {
+    widgetsById: {
+      ...widgetsById,
+      [replacementFrameId]: { ...widgetsById[replacementFrameId], frameRole: "canonical" },
+    },
+    canonicalFrameId: replacementFrameId,
+  };
 }
 
 /**
@@ -229,6 +269,7 @@ export function handleCreateVariant(
     });
     const movedRoot = newVariant.rootWidgetId ? newWidgets[newVariant.rootWidgetId] : undefined;
     if (movedRoot) newWidgets[movedRoot.id] = { ...movedRoot, x: rootX, y: 0, width: board.meta.width, height: board.meta.height, frameRole: "canonical" };
+    const canonicalFrameId = newVariant.rootWidgetId;
 
     // Tree: create StateSectionNode under existing ScreenRootNode
     const sectionId = makeSectionId(variantId);
@@ -247,13 +288,13 @@ export function handleCreateVariant(
     return {
       ...project,
       stateBoardsById: { ...project.stateBoardsById, [board.id]: { ...board, variantIds: [...board.variantIds, variantId] } },
-      variantsById: { ...project.variantsById, [variantId]: newVariant },
+      variantsById: { ...project.variantsById, [variantId]: { ...newVariant, canonicalFrameId } },
       widgetsById: { ...project.widgetsById, ...newWidgets },
       treeNodesById,
     };
   }
   const rootWidgetId = action.rootWidgetId ?? `${variantId}-root`;
-  const variant: Variant = { id: variantId, boardId: board.id, name, status: "draft", rootWidgetId, createdAt: now, updatedAt: now };
+  const variant: Variant = { id: variantId, boardId: board.id, name, status: "draft", canonicalFrameId: rootWidgetId, rootWidgetId, createdAt: now, updatedAt: now };
 
   // Tree: create StateSectionNode under existing ScreenRootNode
   const sectionId = makeSectionId(variantId);
@@ -459,6 +500,7 @@ export function handleMoveVariantWidget(
   const targetTreeNode = !targetParent ? project.treeNodesById?.[action.targetParentId] : undefined;
   const targetSection = targetTreeNode?.kind === "state_section" ? targetTreeNode : undefined;
   if (!widget || (!targetParent && !targetSection)) return project;
+  if (targetSection) return project;
   if (targetParent && !CONTAINER_WIDGET_TYPES.has(targetParent.type)) return project;
 
   const owningVariantId = findVariantIdForWidget(project, widget.id);
@@ -528,6 +570,151 @@ export function handleMoveVariantWidget(
     treeNodesById,
   };
   return touchVariant(touchVariant(next, owningVariantId, action.now), targetVariantId, action.now);
+}
+
+export function handleMoveStateSection(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "moveStateSection" }>,
+): ProjectSnapshotV2 {
+  const screenRootId = makeScreenRootId(action.screenId);
+  const root = project.treeNodesById?.[screenRootId];
+  if (!root || root.kind !== "screen_root" || !root.childrenIds.includes(action.sectionId)) return project;
+
+  const sourceIndex = root.childrenIds.indexOf(action.sectionId);
+  const normalizedTargetIndex = Math.max(0, Math.min(action.targetIndex, root.childrenIds.length));
+  const adjustedTargetIndex = sourceIndex < normalizedTargetIndex ? normalizedTargetIndex - 1 : normalizedTargetIndex;
+  if (sourceIndex === adjustedTargetIndex) return project;
+
+  const nextChildrenIds = [...root.childrenIds];
+  nextChildrenIds.splice(sourceIndex, 1);
+  nextChildrenIds.splice(adjustedTargetIndex, 0, action.sectionId);
+  return {
+    ...project,
+    treeNodesById: {
+      ...project.treeNodesById,
+      [root.id]: { ...root, childrenIds: nextChildrenIds },
+    },
+  };
+}
+
+export function handlePromoteSectionFrame(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "promoteSectionFrame" }>,
+): ProjectSnapshotV2 {
+  const section = getSectionNode(project, action.sectionId);
+  const frame = project.widgetsById[action.frameId];
+  if (!section || !frame || frame.type !== "Screen" || !section.childrenIds.includes(frame.id)) return project;
+  const currentCanonicalFrameId = getStateSectionCanonicalFrameId(project, section.id);
+  if (currentCanonicalFrameId === frame.id && frame.frameRole === "canonical") return project;
+
+  const widgetsById = { ...project.widgetsById };
+  for (const frameId of section.childrenIds) {
+    const sectionFrame = widgetsById[frameId];
+    if (!sectionFrame || sectionFrame.type !== "Screen") continue;
+    widgetsById[frameId] = {
+      ...sectionFrame,
+      frameRole: frameId === frame.id ? "canonical" : "draft",
+    };
+  }
+  return withVariantCanonicalFrame({
+    ...project,
+    widgetsById,
+  }, section.stateId, frame.id, action.now);
+}
+
+export function handleMoveSectionFrame(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "moveSectionFrame" }>,
+): ProjectSnapshotV2 {
+  const frame = project.widgetsById[action.frameId];
+  if (!frame || frame.type !== "Screen" || frame.parentId !== null) return project;
+  const sourceSectionId = getFrameSectionId(project, frame.id);
+  const sourceSection = sourceSectionId ? getSectionNode(project, sourceSectionId) : null;
+  const targetSection = getSectionNode(project, action.targetSectionId);
+  if (!sourceSection || !targetSection) return project;
+
+  const sourceIndex = sourceSection.childrenIds.indexOf(frame.id);
+  if (sourceIndex < 0) return project;
+  const targetSiblings = targetSection.childrenIds;
+  const normalizedTargetIndex = Math.max(0, Math.min(action.targetIndex, targetSiblings.length));
+  const sameSection = sourceSection.id === targetSection.id;
+  const adjustedTargetIndex = sameSection && sourceIndex < normalizedTargetIndex ? normalizedTargetIndex - 1 : normalizedTargetIndex;
+  if (sameSection && sourceIndex === adjustedTargetIndex) return project;
+
+  let widgetsById = { ...project.widgetsById };
+  const treeNodesById = { ...project.treeNodesById };
+  const wasCanonical = frame.frameRole === "canonical";
+  const sourceChildren = [...sourceSection.childrenIds];
+  sourceChildren.splice(sourceIndex, 1);
+
+  if (wasCanonical && !sameSection) {
+    const promoted = promoteFirstRemainingFrame(widgetsById, { ...sourceSection, childrenIds: sourceChildren }, frame.id);
+    if (!promoted.canonicalFrameId) return project;
+    widgetsById = promoted.widgetsById;
+  }
+
+  const targetChildren = sameSection ? sourceChildren : [...targetSection.childrenIds];
+  targetChildren.splice(adjustedTargetIndex, 0, frame.id);
+
+  const canonicalMode = action.canonicalMode ?? (sameSection ? "preserve" : "forceDraft");
+  if (canonicalMode === "forceCanonical") {
+    for (const frameId of targetChildren) {
+      const targetFrame = widgetsById[frameId];
+      if (targetFrame?.type === "Screen") {
+        widgetsById[frameId] = { ...targetFrame, frameRole: frameId === frame.id ? "canonical" : "draft" };
+      }
+    }
+  } else if (!sameSection || canonicalMode === "forceDraft") {
+    widgetsById[frame.id] = { ...widgetsById[frame.id], frameRole: "draft" };
+  }
+
+  treeNodesById[sourceSection.id] = { ...sourceSection, childrenIds: sameSection ? targetChildren : sourceChildren };
+  if (!sameSection) treeNodesById[targetSection.id] = { ...targetSection, childrenIds: targetChildren };
+
+  let next: ProjectSnapshotV2 = {
+    ...project,
+    widgetsById,
+    treeNodesById,
+  };
+
+  const sourceCanonical = getStateSectionCanonicalFrameId(next, sourceSection.id);
+  if (sourceCanonical) next = withVariantCanonicalFrame(next, sourceSection.stateId, sourceCanonical, action.now);
+  const targetCanonical = getStateSectionCanonicalFrameId(next, targetSection.id);
+  if (targetCanonical) next = withVariantCanonicalFrame(next, targetSection.stateId, targetCanonical, action.now);
+  return next;
+}
+
+export function handleDeleteSectionFrame(
+  project: ProjectSnapshotV2,
+  action: Extract<VariantAction, { type: "deleteSectionFrame" }>,
+): ProjectSnapshotV2 {
+  const section = getSectionNode(project, action.sectionId);
+  const frame = project.widgetsById[action.frameId];
+  if (!section || !frame || frame.type !== "Screen" || !section.childrenIds.includes(frame.id)) return project;
+  const remainingFrameIds = section.childrenIds.filter((frameId) => frameId !== frame.id);
+  if (frame.frameRole === "canonical") {
+    const replacementFrameId = action.replacementCanonicalFrameId ?? remainingFrameIds[0];
+    if (!replacementFrameId || !remainingFrameIds.includes(replacementFrameId)) return project;
+  }
+
+  let widgetsById = pruneWidgetSubtree(project.widgetsById, frame.id);
+  const replacementFrameId = frame.frameRole === "canonical" ? action.replacementCanonicalFrameId ?? remainingFrameIds[0] : getStateSectionCanonicalFrameId(project, section.id);
+  if (replacementFrameId && widgetsById[replacementFrameId]) {
+    widgetsById = {
+      ...widgetsById,
+      [replacementFrameId]: { ...widgetsById[replacementFrameId], frameRole: "canonical" },
+    };
+  }
+
+  const next: ProjectSnapshotV2 = {
+    ...project,
+    widgetsById,
+    treeNodesById: {
+      ...project.treeNodesById,
+      [section.id]: { ...section, childrenIds: remainingFrameIds },
+    },
+  };
+  return replacementFrameId ? withVariantCanonicalFrame(next, section.stateId, replacementFrameId, action.now) : next;
 }
 
 /** Duplicates a section frame subtree and remaps ids/bindings to the cloned nodes. */
@@ -846,7 +1033,7 @@ export function handleRenameSection(
   };
 }
 
-/** Binds section's canonical frame by promoting its variant to board canonical. */
+/** Compatibility wrapper: promote a section frame, then mark its variant canonical on the board. */
 export function handleBindCanonicalFrame(
   project: ProjectSnapshotV2,
   action: Extract<VariantAction, { type: "bindCanonicalFrame" }>,
@@ -855,10 +1042,16 @@ export function handleBindCanonicalFrame(
   if (!node || node.kind !== "state_section") return project;
   const stateSection = node as StateSectionNode;
   const variant = project.variantsById[stateSection.stateId];
-  if (!variant || variant.rootWidgetId !== action.canonicalFrameId) return project;
+  if (!variant || !stateSection.childrenIds.includes(action.canonicalFrameId)) return project;
   const board = project.stateBoardsById[variant.boardId];
   if (!board) return project;
-  return syncSectionIndexes(handleSetCanonicalVariant(project, {
+  const promoted = handlePromoteSectionFrame(project, {
+    type: "promoteSectionFrame",
+    sectionId: action.sectionId,
+    frameId: action.canonicalFrameId,
+    now: action.now,
+  });
+  return syncSectionIndexes(handleSetCanonicalVariant(promoted, {
     type: "setCanonicalVariant",
     boardId: board.id,
     variantId: variant.id,
